@@ -22,15 +22,20 @@ source "$BUILD_DIR/in-chroot/lib-apt.sh"
 install -d /etc/apt/preferences.d
 
 log "写入 apt pin（阻止 snapd 被任何来源拉入）"
+# 为什么用 `Pin: version *` 而不是社区常见的 `Pin: release a=*`：
+#   apt 的 release pin 匹配 Release 文件的字段，`a=` 对应 **Archive** 字段；
+#   而 Ubuntu 的 Release 文件里只有 Suite/Codename（没有 Archive），因此
+#   `release a=*` 在 Ubuntu 上**不匹配任何版本**，pin 形同虚设 —— 首次实跑时
+#   10-base.sh 的断言就是这样抓到的。`version *` 无条件匹配所有版本，跨发行版都可靠。
 cat > /etc/apt/preferences.d/nosnap.pref <<'EOF'
-# debian-sheng/ubuntu-sheng：本系统不使用 snap，禁止安装 snapd 及其附属组件
+# ubuntu-sheng：本系统不使用 snap，禁止安装 snapd 及其附属组件
 Package: snapd
-Pin: release a=*
-Pin-Priority: -10
+Pin: version *
+Pin-Priority: -1
 
 Package: snap-confine
-Pin: release a=*
-Pin-Priority: -10
+Pin: version *
+Pin-Priority: -1
 EOF
 
 # 防御性清除：基础 tarball 或某个依赖若已带入 snapd，这里移除

@@ -19,12 +19,13 @@ apt_update
 
 # snap 禁用必须在任何安装前生效，并且要**当场断言**：一旦 pin 没生效，
 # snapd 会经 Recommends 链被拉进来，直到最后一步 90-verify.sh 才失败 —— 白烧一小时构建。
+# 断言只看"存在负优先级"（不写死 -10/-1），这样改用 version pin 等其他写法也不会误报。
 # 另外 apt-mark hold 只有在 apt lists 可用（即 update 之后）才认识 snapd 这个包名。
-if ! apt-cache policy snapd 2>/dev/null | grep -q -- '-10'; then
-  die "nosnap.pref 的 Pin-Priority 未生效（apt-cache policy snapd 中看不到 -10）"
+if ! apt-cache policy snapd 2>/dev/null | grep -qE 'Pin-Priority:[[:space:]]*-[0-9]+'; then
+  die "nosnap.pref 未生效：apt-cache policy snapd 里没有负的 Pin-Priority（见 15-nosnap.sh 的说明）"
 fi
 apt-mark hold snapd 2>/dev/null || warn "apt-mark hold snapd 失败（pin 仍然有效，不致命）"
-log "已确认 snapd 被 pin 到 -10（并尝试 hold）"
+log "已确认 snapd 被 apt pin 到负优先级（并尝试 hold）"
 
 apt_install_list "$BUILD_DIR/lists/base.list"
 
