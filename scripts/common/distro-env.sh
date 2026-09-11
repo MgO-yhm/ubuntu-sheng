@@ -23,8 +23,24 @@ case "$DISTRO_SERIES" in
 esac
 export DISTRO_SUITE
 
-# arm64 走 ports 归档（Ubuntu 的 arm64 软件包不在 archive.ubuntu.com 主归档）
-export UBUNTU_PORTS_MIRROR="${UBUNTU_PORTS_MIRROR:-http://ports.ubuntu.com/ubuntu-ports/}"
+# ── arm64 归档位置（随版本变化，不要写死）────────────────────────────────
+# 官方公告「Ubuntu on ARM: summer '26 update」与 ubuntu-images 的 MR（LP #2147101、
+# ubuntu-release-upgrader 的守卫条件）均已确认：
+#   **从 26.04 (resolute) 起 arm64 已从 ports.ubuntu.com 迁到 archive.ubuntu.com**；
+#   25.10 (questing) 及更早仍用 ports。
+# ports 上仍留有 resolute 的副本但**不再刷新**（安全更新会缺失），所以必须按版本选。
+case "$DISTRO_SUITE" in
+  resolute)
+    export UBUNTU_MAIN_MIRROR="${UBUNTU_MAIN_MIRROR:-http://archive.ubuntu.com/ubuntu/}"
+    export UBUNTU_SECURITY_MIRROR="${UBUNTU_SECURITY_MIRROR:-http://security.ubuntu.com/ubuntu/}"
+    ;;
+  *)
+    export UBUNTU_MAIN_MIRROR="${UBUNTU_MAIN_MIRROR:-http://ports.ubuntu.com/ubuntu-ports/}"
+    export UBUNTU_SECURITY_MIRROR="${UBUNTU_SECURITY_MIRROR:-http://ports.ubuntu.com/ubuntu-ports/}"
+    ;;
+esac
+# 兼容旧引用（mmdebstrap 回退路径等）
+export UBUNTU_PORTS_MIRROR="${UBUNTU_PORTS_MIRROR:-$UBUNTU_MAIN_MIRROR}"
 export UBUNTU_CDIMAGE_BASE="${UBUNTU_CDIMAGE_BASE:-https://cdimage.ubuntu.com/ubuntu-base/releases}"
 
 log()  { printf '[%s] %s\n' "${0##*/}" "$*"; }

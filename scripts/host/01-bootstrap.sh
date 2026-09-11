@@ -63,7 +63,7 @@ else
     --components=main,restricted,universe,multiverse \
     --keyring=/usr/share/keyrings/ubuntu-archive-keyring.gpg \
     --mode=root \
-    "$DISTRO_SUITE" "$MOUNT" "$UBUNTU_PORTS_MIRROR"
+    "$DISTRO_SUITE" "$MOUNT" "$UBUNTU_MAIN_MIRROR"
 fi
 
 # ---------------------------------------------------------------------------
@@ -74,11 +74,18 @@ log "写入 apt 源（deb822 格式）"
 mkdir -p "$MOUNT/etc/apt/sources.list.d"
 cat > "$MOUNT/etc/apt/sources.list.d/ubuntu.sources" <<EOF
 Types: deb
-URIs: ${UBUNTU_PORTS_MIRROR}
-Suites: ${DISTRO_SUITE} ${DISTRO_SUITE}-updates ${DISTRO_SUITE}-security ${DISTRO_SUITE}-backports
+URIs: ${UBUNTU_MAIN_MIRROR}
+Suites: ${DISTRO_SUITE} ${DISTRO_SUITE}-updates ${DISTRO_SUITE}-backports
+Components: main restricted universe multiverse
+Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+
+Types: deb
+URIs: ${UBUNTU_SECURITY_MIRROR}
+Suites: ${DISTRO_SUITE}-security
 Components: main restricted universe multiverse
 Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
 EOF
+log "apt 源: main=${UBUNTU_MAIN_MIRROR} security=${UBUNTU_SECURITY_MIRROR}（suite=${DISTRO_SUITE}）"
 rm -f "$MOUNT/etc/apt/sources.list"
 
 log "引导完成：$DISTRO_SERIES ($DISTRO_SUITE)"
