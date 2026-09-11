@@ -6,9 +6,8 @@
 用 **GitHub Actions** 为**小米平板 6S Pro（sheng / 高通 SM8550）**构建 **Ubuntu arm64** 的 `rootfs.img` 与 `boot.img`，
 产出物可直接用 `fastboot` 刷入设备。构建逻辑移植自 [ianchb/debian-sheng](https://github.com/ianchb/debian-sheng)（Debian 版）。
 
-**本项目的硬性要求：系统中完全禁用 snap。** 不安装 `snapd`（apt pin + 清除 + 构建期断言 + 末尾硬校验，四层保障），
-也不使用 `ubuntu-desktop` / `kubuntu-desktop` 这类会把 snapd 作为 Recommends 带入的元包。
-浏览器默认不安装——Ubuntu 主归档的 `firefox` 是 **snap 过渡包**（其 `.deb` 硬依赖 `snapd`），需要时可选 Mozilla 官方 apt 源装 deb 版。
+**系统中完全禁用 snap**（apt pin、构建期断言、末尾硬校验），不使用会带入 `snapd` 的 `ubuntu-desktop` / `kubuntu-desktop` 元包。
+浏览器默认不安装（Ubuntu 主归档的 `firefox` 是 snap 过渡包），需要时可选 Mozilla 官方 apt 源装 deb 版。
 
 ## 已验证的构建
 
@@ -24,7 +23,7 @@
 > Ubuntu arm64 的 apt 在 chroot 内偏慢：实测 `[chroot] Install Base Packages` ≈ 24 分钟、`Install Desktop`（Plasma）≈ 64 分钟，
 > 因此桌面版整轮约 1.5 小时。这是耗时问题而非异常。（对比：姊妹项目 archlinux-sheng 同样的步骤用 pacman 并行下载，整轮仅约 10 分钟。）
 
-**镜像尚未在真机上刷写验证过**；刷写命令与首启判据见 [`docs/troubleshooting.md`](docs/troubleshooting.md)。
+**镜像尚未在真机上刷写验证过。**
 
 ## 快速开始
 
@@ -41,6 +40,11 @@ fastboot flash boot_b boot.img
 fastboot flash linux rootfs.img
 fastboot reboot
 ```
+
+6. **首启检查**：`df -h /`（growfs 生效）、`uname -r`（与 `/usr/lib/modules/` 一致）、
+   `dmesg | grep -i -E 'firmware|adreno|ath12k'`、`systemctl status adsprpcd-sensorspd iio-sensor-proxy`、
+   能自动进桌面、`nmcli` 看到 WCN7850、`which snap` 为空，并实测 6 个 `xiaomi-*` 功能（快充 / 关机充电 /
+   触控与手写笔 / 手写笔状态 / 指纹 / 键盘麦克风指示灯）。
 
 ## 参数说明
 
@@ -90,12 +94,8 @@ fastboot reboot
 即传感器守护进程从未被真正启用；
 ② GDM 自动登录路径——Ubuntu 的 gdm3 只读 `/etc/gdm3/custom.conf`，上游照搬的 Debian 路径在 Ubuntu 上静默失效。
 
-**禁用 snap 的四层保障**：
-① `scripts/lists/*.list` 不含 snap 相关包（不使用硬依赖/推荐 snapd 的元包）；
-② `15-nosnap.sh` 写 `/etc/apt/preferences.d/nosnap.pref`（`Pin: version *` + `Pin-Priority: -1`）并清除已存在的 snapd；
-③ `10-base.sh` 用 `apt-get install -s snapd` 断言"apt 认为 snapd 不可安装"——
-   社区通用的 `Pin: release a=*` 在 Ubuntu 上**不匹配任何版本**（其 Release 文件没有 `Archive:` 字段），必须靠断言兜住；
-④ `90-verify.sh` 末尾硬校验 snapd 未安装、无 `snap` 命令、无 snap 目录。
+**snap**：`15-nosnap.sh` 写 apt pin（`Pin: version *` + `Pin-Priority: -1`）并清除已装 snapd；
+`10-base.sh` 断言 apt 无法安装 snapd，`90-verify.sh` 末尾硬校验。
 
 ## 仓库结构
 
@@ -104,9 +104,6 @@ fastboot reboot
   _packages.yml        workflow_call：8 个设备包构建作业 + xiaomi-* 下载作业
   rootfs.yml           主编排：参数解析 + 组装 rootfs.img / boot.img
   validate.yml         CI 静态自检：bash -n / shellcheck / YAML 解析 / 关键文件
-docs/
-  parity-with-upstream.md   上游各步骤 ↔ 本仓库文件的逐项对照（验收清单）
-  troubleshooting.md        构建排错与首启验收手册
 scripts/
   common/              版本↔suite 映射、apt 源选择、日志工具
   host/                建镜像 / bootstrap / 挂载 chroot / 取内核 / 生成 boot.img / 卸载与收缩
@@ -129,13 +126,6 @@ patches/ mkbootimg sm8550.config
 - **可选包按 best-effort 安装**：桌面/字体等可选包若在某个版本缺失或改名，只会在日志里出现
   "跳过安装失败的包"告警；关键组件由 `90-verify.sh` 硬校验。
 - **尚未真机验证**：镜像产出了，但未在设备上刷写与验收。
-
-## 文档
-
-- [`docs/troubleshooting.md`](docs/troubleshooting.md) — 逐步骤的"正常表现 / 失败含义 / 处置"、
-  刷写命令、首启后的设备侧验收判据，以及常用排查命令。
-- [`docs/parity-with-upstream.md`](docs/parity-with-upstream.md) — 上游 `debian-sheng` 每个步骤
-  ↔ 本仓库文件的逐项对照，含明确记录的行为差异与验收状态。
 
 姊妹项目：[archlinux-sheng](https://github.com/code002-2/archlinux-sheng)（Arch Linux ARM，设备包为原生 pacman 包）。
 
