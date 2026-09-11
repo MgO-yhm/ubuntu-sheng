@@ -1,30 +1,39 @@
 # ubuntu-sheng
 
-> 本项目是基于 [ianchb/debian-sheng](https://github.com/ianchb/debian-sheng) 的构建逻辑移植而来的**独立仓库**：
-> 用 GitHub Actions 为**小米平板 6S Pro（sheng / 高通 SM8550）**构建 Ubuntu rootfs，产出可直接 fastboot 刷写的 `rootfs.img` 与 `boot.img`。
->
-> **本仓库硬性要求：系统中完全禁用 snap。** 不安装 `snapd`（apt pin 断言 + 清除 + 构建末尾硬校验），
-> 也不使用 `ubuntu-desktop` / `kubuntu-desktop` 这类硬依赖 snapd 的元包，浏览器走 Mozilla 官方 apt 源（deb 版）。
+[![Validate](https://github.com/code002-2/ubuntu-sheng/actions/workflows/validate.yml/badge.svg?branch=main)](https://github.com/code002-2/ubuntu-sheng/actions/workflows/validate.yml)
+[![Build RootFS](https://github.com/code002-2/ubuntu-sheng/actions/workflows/rootfs.yml/badge.svg?branch=main)](https://github.com/code002-2/ubuntu-sheng/actions/workflows/rootfs.yml)
 
----
+用 **GitHub Actions** 为**小米平板 6S Pro（sheng / 高通 SM8550）**构建 **Ubuntu arm64** 的 `rootfs.img` 与 `boot.img`，
+产出物可直接用 `fastboot` 刷入设备。构建逻辑移植自 [ianchb/debian-sheng](https://github.com/ianchb/debian-sheng)（Debian 版）。
 
-## 支持范围
+**本项目的硬性要求：系统中完全禁用 snap。** 不安装 `snapd`（apt pin + 清除 + 构建期断言 + 末尾硬校验，四层保障），
+也不使用 `ubuntu-desktop` / `kubuntu-desktop` 这类会把 snapd 作为 Recommends 带入的元包。
+浏览器默认不安装——Ubuntu 主归档的 `firefox` 是 **snap 过渡包**（其 `.deb` 硬依赖 `snapd`），需要时可选 Mozilla 官方 apt 源装 deb 版。
 
-| 项 | 说明 |
-|---|---|
-| Ubuntu 版本 | **26.04 LTS (Resolute Raccoon)**、**25.10 (Questing Quokka)** |
-| 架构 | arm64（aarch64），包源使用 `ports.ubuntu.com/ubuntu-ports` |
-| 桌面环境 | KDE Plasma（含 `plasma-mobile` 选项）/ GNOME / server（无图形界面） |
-| 启动方式 | `dual (linux)`（双系统，默认）/ `single (userdata)` / `custom`（自定义分区名） |
-| 内核 | `prebuilt`（取 [ianchb/sm8550-mainline](https://github.com/ianchb/sm8550-mainline) 的最新 release）或 `custom_build`（自编译） |
-| 设备功能包 | firmware、alsa UCM2、传感器（libssc + iio-sensor-proxy + 注册表）、键盘认证、以及 6 个 `xiaomi-*` 包 |
+## 已验证的构建
+
+以下配置已在本仓库的 GitHub Actions 上**实际跑通并产出镜像**（2026-09-11）：
+
+| 配置 | 构建记录 | 产物 | Artifact 大小¹ | 组装耗时 |
+|---|---|---|---|---|
+| Ubuntu 26.04 / **server** | [run 34596051825](https://github.com/code002-2/ubuntu-sheng/actions/runs/34596051825) | `rootfs-ubuntu-26.04-server-linux`<br>`boot-ubuntu-26.04-server-linux` | 973.5 MB<br>15.7 MB | 19 分钟 |
+| Ubuntu 26.04 / **KDE Plasma** | [run 34603371147](https://github.com/code002-2/ubuntu-sheng/actions/runs/34603371147) | `rootfs-ubuntu-26.04-KDE-Plasma-linux`<br>`boot-ubuntu-26.04-KDE-Plasma-linux` | 1362.1 MB<br>15.7 MB | 90 分钟 |
+
+¹ Artifact 是 zip 压缩后的大小；`rootfs.img` 是 ext4 镜像，刷写前请以解压后的实际大小为准（构建日志与 step summary 会打印）。
+
+> Ubuntu arm64 的 apt 在 chroot 内偏慢：实测 `[chroot] Install Base Packages` ≈ 24 分钟、`Install Desktop`（Plasma）≈ 64 分钟，
+> 因此桌面版整轮约 1.5 小时。这是耗时问题而非异常。（对比：姊妹项目 archlinux-sheng 同样的步骤用 pacman 并行下载，整轮仅约 10 分钟。）
+
+**镜像尚未在真机上刷写验证过**；刷写命令与首启判据见 [`docs/troubleshooting.md`](docs/troubleshooting.md)。
 
 ## 快速开始
 
-1. Fork 本仓库，在 **Actions** 页面启用 workflow。
-2. 选择 **Build RootFS (Ubuntu)** → **Run workflow**，按需填写参数（默认值即可直接构建）。
-3. 构建完成后在该次运行的 **Artifacts** 中下载 `rootfs-ubuntu-*` 与 `boot-ubuntu-*`。
-4. 刷写（与上游流程一致，假设使用 B 槽 + `linux` 分区）：
+1. **Fork 本仓库**（公开仓库可用免费的 `ubuntu-24.04-arm` 原生 arm64 runner）。
+2. **设置密码**：Settings → Secrets and variables → Actions → New repository secret，名称 `ROOTFS_PASSWORD`。
+   > 未设置时构建仍会成功，但镜像里普通用户与 `root` 的密码会是默认值 `password`，构建日志会给出 `::warning::`。
+3. **运行构建**：Actions → **Build RootFS (Ubuntu)** → Run workflow（保持默认参数即可）。
+4. **下载产物**：该次运行的 Summary 页 → Artifacts → `rootfs-*.zip` 与 `boot-*.zip`。
+5. **刷写**（假设使用 B 槽与 `linux` 分区）：
 
 ```bash
 fastboot erase dtbo_b
@@ -33,91 +42,124 @@ fastboot flash linux rootfs.img
 fastboot reboot
 ```
 
-> 建议在仓库 Secrets 中设置 `ROOTFS_PASSWORD`（普通用户与 root 的密码）。
-> 未设置时会回退到上游同样的不安全默认值 `password`，构建日志会给出警告。
-
 ## 参数说明
 
-| 参数 | 默认 | 说明 |
+| 参数 | 默认值 | 说明 |
 |---|---|---|
-| **Ubuntu 版本** | `26.04 (resolute)` | 25.10 为 Questing Quokka |
-| **桌面环境** | `KDE Plasma` | `GNOME` / `server`（无 GUI） |
+| **Ubuntu 版本** | `26.04 (resolute)` | 可选 `25.10 (questing)`；apt 源按版本自动选择（见下文） |
+| **桌面环境** | `KDE Plasma` | `GNOME` / `server`（无图形界面） |
 | **plasma_mobile** | `false` | 勾选后用 `plasma-mobile` 替代 `plasma-desktop` |
-| **browser** | `none` | `firefox` = 从 Mozilla 官方 apt 源装 deb 版（Ubuntu 主归档的 firefox 是 snap 过渡包，在无 snap 系统上装不了） |
-| **autologin** | `true` | 自动登录普通用户 |
-| **username / hostname** | `username` / `xiaomi-sheng` | |
-| **language** | `None (C.UTF-8)` | 选择后生成该 locale + `en_US.UTF-8`，写 `/etc/default/locale` 与 `/etc/locale.conf` |
-| **boot_mode** | `dual (linux)` | 决定 fstab 的 `PARTLABEL=` 与使用哪个预编译 boot 镜像；`custom` 时必须搭配 `kernel_source=custom_build` |
-| **custom_partition** | *(空)* | 仅 `boot_mode=custom` 时需要，只允许字母数字与 `_`/`-` |
-| **quiet_boot** | `true` | 安装 Plymouth，并选用 `*_plymouth.img`（server 模式忽略） |
-| **kernel_source** | `prebuilt` | `custom_build` 时用下面两组参数自行编译 |
-| **kernel_repo / kernel_branch / kernel_config** | `ianchb/sm8550-mainline` / `sheng-7.2.2` / `sm8550.config` | `custom_build` 的内核仓库、分支与配置文件 |
+| **browser** | `none` | `firefox` = 从 Mozilla 官方 apt 源安装 deb 版 |
+| **autologin** | `true` | 自动登录（GNOME → `/etc/gdm3/custom.conf`；KDE → `/etc/sddm.conf.d/autologin.conf`） |
+| **username / hostname** | `username` / `xiaomi-sheng` | 仅允许字母数字与 `_ . -` |
+| **language** | `None (C.UTF-8)` | 10 种可选；选择后生成该 locale + `en_US.UTF-8`，写 `/etc/default/locale` 与 `/etc/locale.conf` |
+| **boot_mode** | `dual (linux)` | `single (userdata)` / `dual (linux)` / `custom`；决定 fstab 的 `PARTLABEL=` 与使用哪个预编译 boot 镜像 |
+| **custom_partition** | *(空)* | 仅 `boot_mode=custom` 需要，且必须搭配 `kernel_source=custom_build` |
+| **quiet_boot** | `true` | 安装 Plymouth 并选用 `*_plymouth.img`；`server` 模式下自动忽略 |
+| **kernel_source** | `prebuilt` | `prebuilt` = 取 [ianchb/sm8550-mainline](https://github.com/ianchb/sm8550-mainline) 的最新 release；`custom_build` = 自行编译 |
+| **kernel_repo / kernel_branch / kernel_config** | `ianchb/sm8550-mainline` / `sheng-7.2.2` / `sm8550.config` | 仅 `custom_build` 使用 |
 | **firmware_repo / firmware_branch** | `ianchb/sheng-firmware` / `master` | 设备固件来源 |
-| **rootfs_size** | `10G` | 初始大小；构建后收缩，首启靠 `x-systemd.growfs` 自动扩容 |
-| **shrink_image** | `true` | 构建后 `e2fsck` + `resize2fs -M` 收缩镜像（上游没有这一步） |
-| **upload_artifacts** | `true` | 测试构建可关闭，只验证流程而不产出 artifact |
+| **rootfs_size** | `10G` | 镜像初始大小；构建后收缩，首启由 `x-systemd.growfs` 扩到分区实际大小 |
+| **shrink_image** | `true` | 构建后 `e2fsck -fy` + `resize2fs -M` 收缩镜像 |
+| **upload_artifacts** | `true` | 设为 `false` 只验证流程、不产出 Artifact（等价于上游的 rootfs-lite 模式） |
 
-## 禁用 snap 的实现
+## 实现要点
 
-| 层 | 做法 | 位置 |
-|---|---|---|
-| 包选择 | 不使用 `ubuntu-desktop` / `ubuntu-desktop-minimal` / `kubuntu-desktop` 等元包，改用显式包列表（`gnome-shell`、`plasma-desktop` 等） | `scripts/lists/*.list` |
-| apt 策略 | `/etc/apt/preferences.d/nosnap.pref` 把 `snapd` / `snap-confine` 的 `Pin-Priority` 设为 `-10`，并 `apt-mark hold snapd` | `scripts/in-chroot/15-nosnap.sh` |
-| 清除 | 若基础镜像或依赖已带入 snapd，则 `apt-get purge` 并删除 `/snap`、`/var/lib/snapd` | 同上 |
-| 浏览器 | Firefox 从 `packages.mozilla.org` 安装（deb 版），并对该源设高优先级 | `scripts/in-chroot/25-browser.sh` |
-| 硬校验 | 构建末尾检查 `snapd` 未安装、`snap` 命令不存在、无 snap 目录，任一不满足即失败 | `scripts/in-chroot/90-verify.sh` |
+**结构**：`rootfs.yml` 只做编排（解析参数 → 取内核 → 收集设备包 → 建镜像 → bootstrap → 挂 chroot →
+镜像内 6 个阶段 → 卸载 → 收缩 → 上传）；设备功能包的构建放在可复用的 `_packages.yml`（`workflow_call`）；
+具体步骤都在 `scripts/` 下的可审阅脚本里。上游把 44–45 KB 逻辑内联在 YAML 并额外复制出
+`rootfs-lite.yml` / `fnnas-rootfs.yml`，本项目用 `upload_artifacts` 输入项替代"再复制一份"的做法。
+
+**apt 源按版本选择**（重要）：从 Ubuntu 26.04 起 **arm64 已从 `ports.ubuntu.com` 迁到 `archive.ubuntu.com`**
+（25.10 及更早仍用 ports）。`scripts/common/distro-env.sh` 按版本选择主源与安全源，
+避免继续使用不再刷新的旧 pocket。
+
+**设备功能包**：`alsa-xiaomi-sheng`（UCM2）、`firmware-xiaomi-sheng`、
+`linux-xiaomi-sheng`（内核与模块）、`sheng-devauth`（键盘认证）、`sheng-sensors`（SSC 传感器注册表）、
+`fastrpc`、`libssc`（含 QRTR 等待补丁）、`iio-sensor-proxy`（启用 SSC 后端），
+以及从 [ianchb](https://github.com/ianchb) 的 6 个仓库下载的 `xiaomi-*` 包
+（MiPPS 快充协商 / 充电模式 / 触控与手写笔 / 手写笔状态 / TEE 指纹 / 官方键盘助手）。
+
+**相对上游补齐的环节**：`depmod`（上游全程缺失）、镜像收缩（上游产物恒为 10 GiB 稀疏文件）、
+依赖解析失败即终止（上游静默继续，可能产出半配置镜像）、出厂前清理构建残留
+（`/root/sheng-build`、`/tmp/debs`）、`policy-rc.d` 生命周期闭环并校验、
+输入白名单校验、CI 静态自检 `validate.yml`。
+
+**修正的上游缺陷**：
+① `adsprpcd-sensorspd.service` 的拼写——上游 enable 的是不存在的 `adsrpcd-…`（少一个 `rp`），
+即传感器守护进程从未被真正启用；
+② GDM 自动登录路径——Ubuntu 的 gdm3 只读 `/etc/gdm3/custom.conf`，上游照搬的 Debian 路径在 Ubuntu 上静默失效。
+
+**禁用 snap 的四层保障**：
+① `scripts/lists/*.list` 不含 snap 相关包（不使用硬依赖/推荐 snapd 的元包）；
+② `15-nosnap.sh` 写 `/etc/apt/preferences.d/nosnap.pref`（`Pin: version *` + `Pin-Priority: -1`）并清除已存在的 snapd；
+③ `10-base.sh` 用 `apt-get install -s snapd` 断言"apt 认为 snapd 不可安装"——
+   社区通用的 `Pin: release a=*` 在 Ubuntu 上**不匹配任何版本**（其 Release 文件没有 `Archive:` 字段），必须靠断言兜住；
+④ `90-verify.sh` 末尾硬校验 snapd 未安装、无 `snap` 命令、无 snap 目录。
 
 ## 仓库结构
 
 ```
 .github/workflows/
-  _packages.yml     # workflow_call：8 个设备功能包构建作业 + xiaomi-* 下载作业
-  rootfs.yml        # 主编排：参数解析 + 组装 rootfs.img / boot.img
-  validate.yml      # CI 自检：bash -n / shellcheck / YAML 解析 / 关键文件存在性
+  _packages.yml        workflow_call：8 个设备包构建作业 + xiaomi-* 下载作业
+  rootfs.yml           主编排：参数解析 + 组装 rootfs.img / boot.img
+  validate.yml         CI 静态自检：bash -n / shellcheck / YAML 解析 / 关键文件
 docs/
-  parity-with-upstream.md   # 上游 rootfs.yml 各步骤 ↔ 本仓库文件的逐项对照（验收清单）
+  parity-with-upstream.md   上游各步骤 ↔ 本仓库文件的逐项对照（验收清单）
+  troubleshooting.md        构建排错与首启验收手册
 scripts/
-  common/           # 版本↔suite 映射、日志工具（宿主与镜像内共用）
-  host/             # 宿主阶段：建镜像 / bootstrap / 挂载 chroot / 取内核 / 生成 boot.img / 伸缩镜像
-  in-chroot/        # 镜像内阶段：基础包 / 禁用 snap / 桌面 / 浏览器 / 设备包 / 系统配置 / 校验
-  lists/            # 包列表（一行一个包，# 注释）
-  packages/         # 设备功能包的构建脚本（dpkg-deb 打包）
-alsa-xiaomi-sheng/  # UCM2 配置（deb 目录树）
-firmware-xiaomi-sheng/ linux-xiaomi-sheng/ sheng-devauth/ sheng-sensors-files/
-patches/ mkbootimg sm8550.config .gitattributes
+  common/              版本↔suite 映射、apt 源选择、日志工具
+  host/                建镜像 / bootstrap / 挂载 chroot / 取内核 / 生成 boot.img / 卸载与收缩
+  in-chroot/           基础包 / 禁用 snap / 桌面 / 浏览器 / 设备包 / 系统配置 / 校验
+  lists/               包列表（一行一包）
+  packages/            设备包构建脚本（dpkg-deb）
+alsa-xiaomi-sheng/ firmware-xiaomi-sheng/ linux-xiaomi-sheng/ sheng-devauth/ sheng-sensors-files/
+patches/ mkbootimg sm8550.config
 ```
-
-## 相对上游 debian-sheng 的改动
-
-1. **发行版**：`debootstrap trixie/forky` → Ubuntu 26.04 / 25.10，基线镜像用官方 `ubuntu-base` rootfs tarball（失败时回退 `mmdebstrap`），arm64 走 `ports.ubuntu.com`。
-2. **禁用 snap**（见上表），上游 Debian 侧不存在该问题。
-3. **补齐上游缺失的 `depmod`**：安装内核后执行 `depmod -a <kver>`，并要求 `modules.dep` 存在，否则构建失败。
-4. **镜像收缩**：新增 `e2fsck -fy` + `resize2fs -M`（上游产物恒为 10 GiB 稀疏文件）。
-5. **依赖解析失败即报错**：上游 `apt-get install /tmp/*.deb || apt-get install -f -y` 之后无条件删除 deb，可能在半配置状态下产出坏镜像；这里失败会终止构建。
-6. **结构**：上游 `rootfs.yml` / `rootfs-lite.yml` / `fnnas-rootfs.yml` 是三份 44–45 KB 的复制粘贴；本仓库把设备包构建抽成 `_packages.yml`（workflow_call），把构建步骤抽成可审阅的 shell 脚本，测试模式合并为 `upload_artifacts` 输入项。
-7. **修正 UCM 软链**：`alsa-xiaomi-sheng/.../conf.d/sm8550/Xiaomi-Pad6SPro.conf` 在上游是 symlink，在 Windows 上克隆会退化成普通文本文件，打包前显式重建。
-8. **`policy-rc.d` 生命周期**：chroot 内阻止 postinst 启动服务，出厂前删除并校验（否则设备上服务永远起不来）。
 
 ## 已知限制
 
-- 与上游一致：**不生成 initramfs**。内核 `sm8550.config` 中 `CONFIG_EXT4_FS=y`（ext4 内建），因此可以无 initramfs 直接挂载 ext4 根分区启动；这也意味着 Plymouth 的 splash 在 `custom_build` 场景下不会真正显示（上游同样如此）。
-- `active` 分区（A 槽）保留原 Android/HyperOS 系统，Debian/Ubuntu 走 B 槽；切换槽位与分区调整请在 TWRP 内完成。
-- 项目处于早期阶段，刷写会修改设备分区，请自行备份。
+- **不生成 initramfs**（与上游一致）：内核 `sm8550.config` 中 `CONFIG_EXT4_FS=y`，可直接挂载 ext4 根分区启动。
+  副作用是 `custom_build` 场景下 Plymouth splash 不会真正显示。
+- **浏览器默认不装**：Ubuntu 主归档的 `firefox` / `chromium-browser` 都是 snap 过渡包，且 Ubuntu 无 `firefox-esr`；
+  需要时请选 `browser=firefox`（Mozilla 官方 apt 源）。
+- **设备固件替换语义**：`firmware-xiaomi-sheng` 声明 `Conflicts/Replaces: linux-firmware`
+  （与 Debian 版同义），即用设备固件包**替换**发行版 linux-firmware。
+  首启后请用 `dmesg | grep -i -E 'firmware|adreno|ath12k'` 确认 GPU/Wi-Fi 固件是否齐全。
+- **可选包按 best-effort 安装**：桌面/字体等可选包若在某个版本缺失或改名，只会在日志里出现
+  "跳过安装失败的包"告警；关键组件由 `90-verify.sh` 硬校验。
+- **尚未真机验证**：镜像产出了，但未在设备上刷写与验收。
 
-## 首次推送注意
+## 文档
 
-- 本仓库**未初始化 git**（按需求"先不推送"）。在 Windows 上 `git init && git add` 时，
-  脚本的**可执行位不会保留**（Windows 的 git 不跟踪 filemode）。这不影响构建：
-  workflow 里每个直接执行的 `./scripts/...` 之前都显式 `chmod +x`，
-  镜像内的脚本由 `scripts/host/02-mount-chroot.sh` 统一 `chmod -R 755`。
-- `.gitattributes` 设了 `* text=auto eol=lf`，防止 CRLF 破坏 shell 脚本与 `mkbootimg`。
-- `.gitignore` 排除了构建产物（`*.deb`、`*.img`、`debs/` 等），
-  但**设备包目录树必须提交**：`alsa-xiaomi-sheng/`、`firmware-xiaomi-sheng/`、
-  `linux-xiaomi-sheng/`、`sheng-devauth/`、`sheng-sensors-files/`（含 `DEBIAN/control`）、
-  以及 `patches/`、`mkbootimg`、`sm8550.config`。
+- [`docs/troubleshooting.md`](docs/troubleshooting.md) — 逐步骤的"正常表现 / 失败含义 / 处置"、
+  刷写命令、首启后的设备侧验收判据，以及常用排查命令。
+- [`docs/parity-with-upstream.md`](docs/parity-with-upstream.md) — 上游 `debian-sheng` 每个步骤
+  ↔ 本仓库文件的逐项对照，含明确记录的行为差异与验收状态。
+
+姊妹项目：[archlinux-sheng](https://github.com/code002-2/archlinux-sheng)（Arch Linux ARM，设备包为原生 pacman 包）。
+
+## 许可与第三方组件
+
+本仓库是构建脚本集合，自身不声明开源许可证（上游 `debian-sheng` 亦未声明）。
+仓库内包含的第三方内容如下，版权归各自权利人：
+
+| 内容 | 来源 | 许可 |
+|---|---|---|
+| `mkbootimg` | AOSP `system/tools/mkbootimg` | Apache-2.0 |
+| `sm8550.config` | [ianchb/sm8550-mainline](https://github.com/ianchb/sm8550-mainline) | GPL-2.0（Linux 内核配置） |
+| `patches/`（`adsprpcd-sensorspd.service`、`wait_for_qmi_service.patch`） | 上游 `debian-sheng` 及其各自上游 | 随各上游仓库 |
+| `sheng-sensors-files/`（SSC 传感器注册表、udev 规则） | 上游 `sheng-sensors` 包 | 随上游 |
+| `alsa-xiaomi-sheng/`（UCM2 配置） | 上游 `alsa-xiaomi-sheng` 包 | 随上游 |
+| 构建期下载的内核 deb、`xiaomi-*` deb、设备固件 | 各自的 GitHub release / 仓库 | 见对应上游仓库 |
+
+`firmware-xiaomi-sheng` 在本仓库内只有包骨架（`DEBIAN/control`），**固件二进制在构建时从上游
+`sheng-firmware` 下载**，本仓库不重新分发；这些固件版权归高通 / 小米等各自权利人，
+仅用于在自有设备上运行 Linux。
 
 ## 致谢
 
 - **map220v** — TWRP、主线内核移植与大量设备适配
 - **alghiffaryfa19** — 上游原始构建脚本
 - **ianchb** — [debian-sheng](https://github.com/ianchb/debian-sheng) 与 `xiaomi-*` 设备功能包
+- **Dylan Van Assche** — `libssc` 与 `iio-sensor-proxy` 的 SSC 后端

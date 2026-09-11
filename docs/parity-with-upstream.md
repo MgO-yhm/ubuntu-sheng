@@ -1,8 +1,9 @@
 # 与上游 debian-sheng 的功能对照（Ubuntu 版）
 
-> 上游基准：`ianchb/debian-sheng` 的 `.github/workflows/rootfs.yml`（master，1280 行，7 个作业）。
+> 上游基准：`ianchb/debian-sheng` 的 `.github/workflows/rootfs.yml`（master，约 1280 行，7 个作业）。
 > 本表逐条列出上游每个步骤在本仓库的落点，用于验收"全量对齐"。
-> 生成方式：对照上游 `rootfs.yml` 全文分析逐项核对本仓库文件，非凭印象填写。
+> 生成方式：对照上游 `rootfs.yml` 全文逐项核对本仓库文件，非凭印象填写；
+> 输入项对齐情况另用脚本对两个仓库的 `workflow_dispatch` 做差集核对（见文末"验收状态"）。
 
 ## 一、workflow_dispatch 输入项
 
@@ -78,3 +79,12 @@
 2. **不生成 initramfs**：与上游一致（内核 `CONFIG_EXT4_FS=y`，无需 initramfs）。副作用是 `custom_build` 下 plymouth splash 不会真正显示。
 3. **失败即终止**：设备 deb 安装、`modules.dep` 缺失、snapd 存在、fstab 不符、关键文件缺失等都会让构建失败，而不是产出静默坏镜像（上游多处为静默继续）。
 4. **`policy-rc.d` 生命周期**：chroot 内写入以阻止 postinst 启服务，出厂前删除并校验（上游无此机制，`sheng-devauth` 等 postinst 在 chroot 内的 `systemctl start` 会失败但被 `|| true` 掩盖）。
+
+## 五、验收状态
+
+- **输入项对齐**：已用脚本对两个仓库的 `workflow_dispatch` 输入做差集核对 —— 上游对齐的 15 项名称与默认值一致，
+  与姊妹项目 archlinux-sheng 相比仅差 `ubuntu_series`（Arch 无此概念），`browser` 默认值不同（Ubuntu 为 `none`）。
+- **构建实测**：Ubuntu 26.04 / server 与 Ubuntu 26.04 / KDE Plasma 两条配置已在 GitHub Actions 上跑通并产出镜像，
+  见 README"已验证的构建"表（含 run 链接、产物大小与分段耗时）。
+- **尚未验证**：镜像**未在真机上刷写**。刷写命令、首启验收判据与排错步骤见
+  [`troubleshooting.md`](troubleshooting.md)。
