@@ -20,9 +20,9 @@
 | `[chroot] Install Base Packages` | **必须出现"已确认 apt 无法安装 snapd（nosnap pin 生效）"**；此步耗时较长（≈24 分钟，见下） | 若变成 `nosnap.pref 未生效` → pin 写法在该版本上失效（社区通用的 `Pin: release a=*` 在 Ubuntu 上不匹配任何版本，本项目用 `Pin: version *`） |
 | `[chroot] Install Desktop` | KDE Plasma ≈64 分钟、GNOME 类似；日志可能出现"跳过安装失败的包: xxx" | 桌面列表是 best-effort 安装：个别包改名只告警不失败（这是有意的，避免版本差异让整条构建失败）；关键包由校验步骤硬校验 |
 | `[chroot] Install Browser` | `browser=none` 时直接跳过 | 选 `firefox` 时从 Mozilla 官方 apt 源安装；**不要**改用 Ubuntu 主归档的 firefox（snap 过渡包，硬依赖 snapd） |
-| `[chroot] Install Device Packages` | `共收集到 N 个 deb`、`iio-sensor-proxy 使用本仓库版本: 99993.9-6`、`depmod` 生成索引 | ① `apt-get install` 报依赖错误 → 多为下载来的 `xiaomi-*.deb` 依赖了 Ubuntu 已改名的包，按报错包名核对；② 提示"装成了发行版版本"= 自建版没覆盖成功 |
+| `[chroot] Install Device Packages` | `待安装设备包（N 个）：`、`iio-sensor-proxy 使用本仓库版本: 99993.9-6`、`为内核 … 生成模块依赖索引（depmod）` | ① `apt-get install` 报依赖错误 → 多为下载来的 `xiaomi-*.deb` 依赖了 Ubuntu 已改名的包，按报错包名核对；② 提示 `iio-sensor-proxy 装成了发行版版本` = 自建版没覆盖成功 |
 | `[chroot] Verify Image` | 全部 `[ OK ]` | 任一 `[FAIL]` 都会让构建失败，按提示定位（snapd / 内核模块 `modules.dep` / fstab / 设备关键文件 / 显示管理器与 NetworkManager 是否 enable / locale） |
-| Finalize Image | `镜像已收缩: 10G → x.xG`，并写入 step summary | 显示"失败（保持 10G）"时镜像仍可刷写，只是首启扩容前会占满分区 |
+| Finalize Image | `镜像已收缩: 成功（10G → 1.9G）`，并把结果写入 step summary | 显示 `失败（保持 10G；镜像仍可刷写，首启前会占满分区）` 时镜像仍可刷写，只是首启扩容前会占满分区 |
 
 **耗时基线**（实测，仅供判断"是否卡死"参考）：`Install Base Packages` 约 24 分钟、
 `Install Desktop`(Plasma) 约 64 分钟，KDE 版组装作业合计 **90 分钟**。
