@@ -17,6 +17,7 @@
 | **browser** | `none` | `firefox` = 从 Mozilla 官方 apt 源安装 deb 版（Ubuntu 主归档的 `firefox` 是 snap 过渡包） |
 | **autologin** | `true` | 自动登录（GNOME → `/etc/gdm3/custom.conf`；KDE → `/etc/sddm.conf.d/autologin.conf`） |
 | **username / hostname** | `username` / `xiaomi-sheng` | 仅允许字母数字与 `_ . -` |
+| **password** | *(空)* | 镜像密码（普通用户与 `root` 同密码）。优先用本输入项；留空则用仓库 Secret `ROOTFS_PASSWORD`；都为空时为 `password`。输入项会 `::add-mask::` 打码，但**值仍显示在该次运行的输入摘要里**，介意请改用 Secret |
 | **language** | `None (C.UTF-8)` | 10 种可选；选择后生成该 locale + `en_US.UTF-8`，写 `/etc/default/locale` 与 `/etc/locale.conf` |
 | **boot_mode** | `dual (linux)` | `single (userdata)` / `dual (linux)` / `custom`；决定 fstab 的 `PARTLABEL=` 与使用哪个预编译 boot 镜像 |
 | **custom_partition** | *(空)* | 仅 `boot_mode=custom` 需要，且必须搭配 `kernel_source=custom_build` |
