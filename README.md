@@ -11,7 +11,7 @@
 
 | 参数 | 默认值 | 说明 |
 |---|---|---|
-| **Ubuntu 版本** | `26.04 (resolute)` | 可选 `25.10 (questing)`；apt 源按版本自动选择（26.04 起 arm64 用 main archive，25.10 及更早用 ports） |
+| **Ubuntu 版本** | `26.04 (resolute)` | 可选 `26.10 (stonking)`（开发中）与 `25.10 (questing)`；apt 源按版本自动选择（26.04 及以后 arm64 用 main archive，25.10 及更早用 ports） |
 | **桌面环境** | `KDE Plasma` | `GNOME` / `server`（无图形界面） |
 | **plasma_mobile** | `false` | 勾选后用 `plasma-mobile` 替代 `plasma-desktop` |
 | **browser** | `none` | `firefox` = 从 Mozilla 官方 apt 源安装 deb 版（Ubuntu 主归档的 `firefox` 是 snap 过渡包） |

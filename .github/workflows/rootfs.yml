@@ -19,6 +19,7 @@ on:
         default: '26.04 (resolute)'
         options:
           - '26.04 (resolute)'
+          - '26.10 (stonking)'
           - '25.10 (questing)'
       desktop:
         description: '桌面环境（server 为无图形界面）'

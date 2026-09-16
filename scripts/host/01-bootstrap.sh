@@ -5,7 +5,7 @@
 # debootstrap 是否认识新 suite 的影响）；若所有候选地址都失败，退回 mmdebstrap。
 #
 # 环境变量：
-#   DISTRO_SERIES  26.04 / 25.10（见 common/distro-env.sh）
+#   DISTRO_SERIES  26.10 / 26.04 / 25.10（见 common/distro-env.sh）
 #   UBUNTU_BASE_URL 可选，直接指定 tarball 地址（覆盖候选列表）
 #
 # 用法: sudo scripts/host/01-bootstrap.sh [挂载点]
@@ -27,6 +27,15 @@ trap 'rm -rf "$(dirname "$TARBALL")"' EXIT
 candidates=()
 if [[ -n "${UBUNTU_BASE_URL:-}" ]]; then
   candidates+=("$UBUNTU_BASE_URL")
+fi
+if [[ "${DISTRO_DEVEL}" == "true" ]]; then
+  # 开发中的版本（如 26.10）官方 cdimage 的 releases/ 下还没有 ubuntu-base，
+  # 只有 daily 构建；先试 daily，全部失败会自动回退 mmdebstrap。
+  log "开发中的版本（${DISTRO_SERIES} / ${DISTRO_SUITE}）：优先尝试 ubuntu-base daily 构建"
+  candidates+=(
+    "https://cdimage.ubuntu.com/ubuntu-base/daily/current/ubuntu-base-${DISTRO_SERIES}-base-arm64.tar.gz"
+    "https://mirrors.ustc.edu.cn/ubuntu-cdimage/ubuntu-base/daily/current/ubuntu-base-${DISTRO_SERIES}-base-arm64.tar.gz"
+  )
 fi
 candidates+=(
   # 点发行版（26.04.1 之类）比 GA 版新数月，优先取；文件不存在时自动落到下一个候选

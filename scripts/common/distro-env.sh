@@ -17,11 +17,14 @@ fi
 : "${DISTRO_SERIES:=26.04}"
 
 case "$DISTRO_SERIES" in
+  26.10|stonking) DISTRO_SUITE="stonking"; DISTRO_DEVEL="true" ;;  # Ubuntu 26.10 Stonking Stingray（开发中）
   26.04|resolute) DISTRO_SUITE="resolute" ;;   # Ubuntu 26.04 LTS Resolute Raccoon
   25.10|questing) DISTRO_SUITE="questing" ;;   # Ubuntu 25.10 Questing Quokka
-  *) echo "不支持的 Ubuntu 版本: $DISTRO_SERIES（可选 26.04 / 25.10）" >&2; exit 1 ;;
+  *) echo "不支持的 Ubuntu 版本: $DISTRO_SERIES（可选 26.10 / 26.04 / 25.10）" >&2; exit 1 ;;
 esac
 export DISTRO_SUITE
+# 开发中的版本：官方 releases/ 下还没有 ubuntu-base tarball，引导阶段优先试 daily 构建
+export DISTRO_DEVEL="${DISTRO_DEVEL:-false}"
 
 # ── arm64 归档位置（随版本变化，不要写死）────────────────────────────────
 # 官方公告「Ubuntu on ARM: summer '26 update」与 ubuntu-images 的 MR（LP #2147101、
@@ -30,7 +33,7 @@ export DISTRO_SUITE
 #   25.10 (questing) 及更早仍用 ports。
 # ports 上仍留有 resolute 的副本但**不再刷新**（安全更新会缺失），所以必须按版本选。
 case "$DISTRO_SUITE" in
-  resolute)
+  resolute|stonking)
     export UBUNTU_MAIN_MIRROR="${UBUNTU_MAIN_MIRROR:-http://archive.ubuntu.com/ubuntu/}"
     export UBUNTU_SECURITY_MIRROR="${UBUNTU_SECURITY_MIRROR:-http://security.ubuntu.com/ubuntu/}"
     ;;
