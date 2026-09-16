@@ -9,14 +9,14 @@
 #
 # 需要环境变量：
 #   KERNEL_REPO    默认 https://github.com/ianchb/sm8550-mainline
-#   KERNEL_BRANCH  默认 sheng-7.2.2
+#   KERNEL_BRANCH  默认 sheng-7.2.6
 #   KERNEL_CONFIG  默认 sm8550.config（仓库内文件）
 #
 # 用法: scripts/packages/build-kernel.sh
 set -euo pipefail
 
 KERNEL_REPO="${KERNEL_REPO:-https://github.com/ianchb/sm8550-mainline}"
-KERNEL_BRANCH="${KERNEL_BRANCH:-sheng-7.2.2}"
+KERNEL_BRANCH="${KERNEL_BRANCH:-sheng-7.2.6}"
 KERNEL_CONFIG="${KERNEL_CONFIG:-sm8550.config}"
 
 SRC="${PWD}/linux"
