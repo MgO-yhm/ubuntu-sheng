@@ -17,6 +17,10 @@ APT_OPTS=(
 #     必须在出厂前删除，否则设备上服务永远无法启动 —— 见 40-system-config.sh 与 90-verify.sh
 #   * needrestart：Ubuntu 的 needrestart 在非交互环境下可能阻塞 apt 安装
 prepare_apt() {
+  # chroot 里的一切都依赖 apt-get：缺失时给出可读的错误，而不是后面一句
+  # “apt-get: command not found”（引导阶段出问题时的典型症状）
+  command -v apt-get >/dev/null 2>&1 \
+    || die "chroot 内找不到 apt-get —— 引导阶段（ubuntu-base tarball / mmdebstrap）没有装出可用系统"
   if [[ ! -e /usr/sbin/policy-rc.d ]]; then
     printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d
     chmod 755 /usr/sbin/policy-rc.d

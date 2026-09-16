@@ -66,14 +66,26 @@ else
   # -------------------------------------------------------------------------
   warn "未能获取 ubuntu-base tarball，回退 mmdebstrap"
   command -v mmdebstrap >/dev/null 2>&1 || die "mmdebstrap 未安装；请在 workflow 里安装 mmdebstrap 或指定 UBUNTU_BASE_URL"
+  # --include=apt：minbase 在开发中的 suite 上有时不会把 apt 带进来，
+  # 没有 apt-get 的 rootfs 会在 chroot 第一步就失败（且错误信息很不直观），这里显式要求。
   mmdebstrap \
     --architectures=arm64 \
     --variant=minbase \
+    --include=apt,ubuntu-keyring,ca-certificates \
     --components=main,restricted,universe,multiverse \
     --keyring=/usr/share/keyrings/ubuntu-archive-keyring.gpg \
     --mode=root \
     "$DISTRO_SUITE" "$MOUNT" "$UBUNTU_MAIN_MIRROR"
 fi
+
+# 引导结果自检：chroot 阶段依赖 apt-get，缺失时在这里就报清楚（否则要等到
+# “apt-get: command not found” 才发现，且看不出根因）
+if [[ ! -x "$MOUNT/usr/bin/apt-get" ]]; then
+  warn "引导后的 rootfs 里没有 /usr/bin/apt-get，目录内容如下："
+  ls -l "$MOUNT/usr/bin" 2>/dev/null | head -30 | sed 's/^/    /' || true
+  die "引导失败：rootfs 缺少 apt-get（tarball 路径与 mmdebstrap 回退路径都没能装出可用系统）"
+fi
+log "已确认 rootfs 内有 apt-get"
 
 # ---------------------------------------------------------------------------
 # 3) apt 源：arm64 用 ports，补齐 -updates/-security/-backports
