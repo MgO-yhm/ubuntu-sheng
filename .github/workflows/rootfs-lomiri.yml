@@ -42,6 +42,7 @@ jobs:
           # universe 是必须的：lomiri 在 universe 里
           sudo mmdebstrap \
             --arch=arm64 \
+            --mirror=http://ports.ubuntu.com/ubuntu-ports \
             --variant=minbase \
             --components=main,universe \
             --include=ca-certificates,gnupg,apt-utils,systemd,systemd-sysv,sudo,locales,tzdata,kmod,udev \
