@@ -22,13 +22,14 @@ on:
           - '26.10 (stonking)'
           - '25.10 (questing)'
       desktop:
-        description: '桌面环境（server 为无图形界面）'
+        description: '桌面环境（server 为无图形界面；Lomiri = 原 Ubuntu Touch 的 Unity8，为触屏平板设计）'
         required: true
         type: choice
         default: 'KDE Plasma'
         options:
           - 'KDE Plasma'
           - 'GNOME'
+          - 'Lomiri'
           - 'server'
       plasma_mobile:
         description: '使用 plasma-mobile 替代 plasma-desktop（仅 KDE Plasma 生效）'
@@ -44,7 +45,7 @@ on:
           - 'none'
           - 'firefox'
       autologin:
-        description: '自动登录'
+        description: '自动登录（Lomiri 经 greetd 恒为自动登录，本项对它无效）'
         required: false
         type: boolean
         default: true

@@ -12,10 +12,10 @@
 | 参数 | 默认值 | 说明 |
 |---|---|---|
 | **Ubuntu 版本** | `26.04 (resolute)` | 可选 `26.10 (stonking)`（开发中）与 `25.10 (questing)`；apt 源按版本自动选择（26.04 及以后 arm64 用 main archive，25.10 及更早用 ports） |
-| **桌面环境** | `KDE Plasma` | `GNOME` / `server`（无图形界面） |
-| **plasma_mobile** | `false` | 勾选后用 `plasma-mobile` 替代 `plasma-desktop` |
+| **桌面环境** | `KDE Plasma` | `GNOME` / `Lomiri` / `server`（无图形界面） |
+| **plasma_mobile** | `false` | 勾选后用 `plasma-mobile` 替代 `plasma-desktop`（仅 KDE Plasma 生效） |
 | **browser** | `none` | `firefox` = 从 Mozilla 官方 apt 源安装 deb 版（Ubuntu 主归档的 `firefox` 是 snap 过渡包） |
-| **autologin** | `true` | 自动登录（GNOME → `/etc/gdm3/custom.conf`；KDE → `/etc/sddm.conf.d/autologin.conf`） |
+| **autologin** | `true` | 自动登录（GNOME → `/etc/gdm3/custom.conf`；KDE → `/etc/sddm.conf.d/autologin.conf`；Lomiri 恒为自动登录，本项对它无效） |
 | **username / hostname** | `username` / `xiaomi-sheng` | 仅允许字母数字与 `_ . -` |
 | **password** | *(空)* | 镜像密码（普通用户与 `root` 同密码）。优先用本输入项；留空则用仓库 Secret `ROOTFS_PASSWORD`；都为空时为 `password`。输入项会 `::add-mask::` 打码，但**值仍显示在该次运行的输入摘要里**，介意请改用 Secret |
 | **language** | `None (C.UTF-8)` | 10 种可选；选择后生成该 locale + `en_US.UTF-8`，写 `/etc/default/locale` 与 `/etc/locale.conf` |
@@ -29,6 +29,28 @@
 | **rootfs_size** | `10G` | 镜像初始大小；构建后收缩，首启由 `x-systemd.growfs` 扩到分区实际大小 |
 | **shrink_image** | `true` | 构建后 `e2fsck -fy` + `resize2fs -M` 收缩镜像 |
 | **upload_artifacts** | `true` | 设为 `false` 只验证流程、不产出 Artifact |
+
+## 桌面环境：Lomiri
+
+`Lomiri` 是原 Ubuntu Touch 的 Unity8 外壳，为触屏平板设计。选它时：
+
+* **显示栈是 Mir + Qt/QML 直接走 DRM/KMS**，不需要 libhybris / Android vendor 层 ——
+  这是它区别于 Sailfish / Droidian 的地方，纯 mainline 内核就能跑。
+* 会话由 **greetd** 拉起（`display-manager.service` → `greetd.service`）。`greetd`
+  的 `[default_session]` 命令就是会话本体，所以等价于自动登录。
+  镜像里**不放 greeter**：`lomiri-greeter` 那个包是 LightDM 用的，对 greetd 无效。
+* 会话入口是 `lomiri-desktop-session` 提供的 `/usr/bin/lomiri-session`。只有 `lomiri`
+  包是不够的 —— 缺了它 systemd 会一直抱怨 `lomiri.service` 不存在，greetd 也无从拉起会话。
+* `40-system-config.sh` 会 **mask `getty@tty1.service`**：getty 默认占住 tty1，和 greetd 的
+  `vt = 1` 抢同一个终端，不 mask 的话真机上只会看到 tty1 的登录提示。
+* `40-system-config.sh` 同时写入 `/etc/deviceinfo/devices/sheng.yaml` 与
+  `/etc/machine-info`。原因：`lomiri-session` 的 `GRID_UNIT_PX` 取自
+  `device-info get GridUnit`，而 `/etc/deviceinfo/default.yaml` 的兜底档位是 `desktop`
+  （GridUnit 8，参考表里“96–150 PPI 普通笔记本”那一行）。sheng 是 12.4″ 3048×2032 =
+  **295 PPI** 平板，按 [UBports 的参考表](https://docs.ubports.com/en/latest/porting/configure_test_fix/Display.html)
+  （299 PPI 的 Nexus 10 用 20）应为 **21**；不配置的话整套 UI 只有应有尺寸的 1/2.6，
+  触控命中区域会小到没法用。`/etc/default/lomiri-desktop-session` 里的
+  `DEFAULT_GRID_UNIT_PX=21` 是保底覆盖，它的优先级高于 device-info 的自动探测。
 
 ## 许可与第三方组件
 

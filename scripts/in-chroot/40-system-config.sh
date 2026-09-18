@@ -4,6 +4,7 @@
 #
 # 对应上游 debian-sheng 的 Set Hostname、Configure Locale、Create User、Set Passwords、
 # Configure GDM/SDDM(+Autologin)、Enable NetworkManager、Configure fstab、Clean APT Cache。
+# 另加：Lomiri 的 greetd 会话配置，以及 libdeviceinfo 的设备形态 / 显示缩放。
 #
 # 环境变量：
 #   /root/build.env 提供 HOSTNAME / USERNAME / LANGUAGE / AUTOLOGIN / DESKTOP /
@@ -132,10 +133,79 @@ EOF
     systemctl enable sddm.service || warn "启用 sddm 失败"
     systemctl set-default graphical.target
     ;;
+  Lomiri)
+    # greetd 的 config.toml 里 [default_session] 的 command 就是会话命令本身，
+    # 把它设成 lomiri-session 等价于自动登录（会话退出后 greetd 会重启它）。
+    # 镜像里不放 greeter：lomiri-greeter 那个包是 LightDM 用的，对 greetd 无效。
+    if [[ "$AUTOLOGIN" != "true" ]]; then
+      warn "Lomiri 经 greetd 恒为自动登录（[default_session] 即会话命令），autologin=false 已忽略"
+    fi
+    log "配置 greetd 启动 Lomiri 会话: $USERNAME"
+    install -d /etc/greetd
+    cat > /etc/greetd/config.toml <<EOF
+[terminal]
+vt = 1
+
+[default_session]
+command = "/usr/bin/lomiri-session"
+user = "$USERNAME"
+EOF
+    # getty 默认占住 tty1，会和 greetd 的 vt = 1 抢同一个终端。真机上的表现是
+    # 屏幕上停着 tty1 的登录提示、Lomiri 永远起不来，所以必须 mask 掉。
+    systemctl mask getty@tty1.service || warn "mask getty@tty1 失败"
+    systemctl enable greetd.service || warn "启用 greetd 失败"
+    systemctl set-default graphical.target
+    ;;
   server)
     log "server 模式：不配置显示管理器"
     ;;
 esac
+
+# ---------------------------------------------------------------------------
+# 5b) 设备形态与显示缩放（libdeviceinfo）
+# ---------------------------------------------------------------------------
+# lomiri-session 的 GRID_UNIT_PX 取自 `device-info get GridUnit`，而
+# /etc/deviceinfo/default.yaml 的兜底档位是 desktop（GridUnit 8，即参考表里
+# “96–150 PPI 普通笔记本”那一行）。sheng 是 12.4" 3048x2032 = 295 PPI 平板，
+# 按 UBports 的参考表（299 PPI 的 Nexus 10 用 20）应为 20–21。
+# 不配置的后果：整套 UI 只有应有尺寸的 1/2.6，触控命中区域小到没法用。
+#
+# 匹配方式：拿 /proc/device-tree/model 去比 yaml 里的 Names，
+# sheng 的 DT model 是 “Xiaomi Pad 6S Pro 12.4”。
+log "写入设备形态与显示参数（libdeviceinfo）"
+install -d /etc/deviceinfo/devices
+cat > /etc/deviceinfo/devices/sheng.yaml <<'EOF'
+sheng:
+  Names:
+    - "Xiaomi Pad 6S Pro 12.4"
+    - "xiaomi,sheng"
+    - "Xiaomi-Pad6SPro"
+    - "sheng"
+  PrettyName: "Xiaomi Pad 6S Pro 12.4"
+  DeviceType: tablet
+  GridUnit: 21
+  WebkitDpr: 2
+  SupportedOrientations:
+    - Portrait
+    - InvertedPortrait
+    - Landscape
+    - InvertedLandscape
+  PrimaryOrientation: Landscape
+EOF
+# FORM_FACTOR 取的是 chassis，hostnamectl 读 /etc/machine-info
+printf 'CHASSIS=tablet\n' > /etc/machine-info
+
+if [[ "$DESKTOP" == "Lomiri" ]]; then
+  # lomiri-session 开头就 source 这个文件，DEFAULT_GRID_UNIT_PX 会直接短路掉
+  # device-info 探测（脚本里是 ${DEFAULT_GRID_UNIT_PX:-$(device-info ...)}）。
+  # 这是保底：即便上面那份 yaml 因 DT model 改名而匹配不上，缩放依然正确。
+  log "写入 Lomiri 会话缩放覆盖 GRID_UNIT_PX=21"
+  cat > /etc/default/lomiri-desktop-session <<'EOF'
+# 由 /usr/bin/lomiri-session 开头 source；DEFAULT_* 优先级高于 device-info 探测。
+DEFAULT_GRID_UNIT_PX=21
+DEFAULT_NATIVE_ORIENTATION=Landscape
+EOF
+fi
 
 # ---------------------------------------------------------------------------
 # 6) fstab（PARTLABEL 定位根分区；x-systemd.growfs 首启自动扩容）

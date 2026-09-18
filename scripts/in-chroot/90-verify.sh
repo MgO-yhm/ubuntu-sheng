@@ -102,6 +102,51 @@ if [[ "${AUTOLOGIN:-false}" == "true" ]]; then
   esac
 fi
 
+# 4b) Lomiri 会话链路（缺任何一环，真机上就停在 tty1 的登录提示）
+if [[ "${DESKTOP:-server}" == "Lomiri" ]]; then
+  for f in /usr/bin/lomiri /usr/bin/lomiri-session \
+           /usr/share/wayland-sessions/lomiri.desktop \
+           /usr/lib/systemd/user/lomiri.service; do
+    [[ -e "$f" ]] && pass "存在 $f" || fail "缺少 $f"
+  done
+  if [[ -f /etc/greetd/config.toml ]] \
+     && grep -q 'lomiri-session' /etc/greetd/config.toml; then
+    pass "greetd 指向 lomiri-session"
+  else
+    fail "greetd 未指向 lomiri-session（检查 /etc/greetd/config.toml）"
+  fi
+  # getty 与 greetd 抢 tty1：没 mask 掉 Lomiri 就起不来
+  if [[ "$(readlink -f /etc/systemd/system/getty@tty1.service 2>/dev/null)" == "/dev/null" ]]; then
+    pass "getty@tty1 已 mask（greetd 独占 vt1）"
+  else
+    fail "getty@tty1 未 mask，会和 greetd 抢 tty1"
+  fi
+fi
+
+# 4c) 设备形态与显示缩放（Lomiri UI 尺寸正确的前提）
+if [[ -f /etc/deviceinfo/devices/sheng.yaml ]]; then
+  pass "deviceinfo 设备描述已写入"
+  if grep -qE '^[[:space:]]*GridUnit:[[:space:]]*21' /etc/deviceinfo/devices/sheng.yaml; then
+    pass "GridUnit = 21（295 PPI 平板）"
+  else
+    fail "GridUnit 不是 21，Lomiri UI 会小 2.6 倍"
+  fi
+else
+  fail "缺少 /etc/deviceinfo/devices/sheng.yaml"
+fi
+if grep -qE '^[[:space:]]*CHASSIS=tablet' /etc/machine-info 2>/dev/null; then
+  pass "CHASSIS=tablet"
+else
+  fail "/etc/machine-info 未设 CHASSIS=tablet"
+fi
+if [[ "${DESKTOP:-server}" == "Lomiri" ]]; then
+  if grep -qE '^DEFAULT_GRID_UNIT_PX=21' /etc/default/lomiri-desktop-session 2>/dev/null; then
+    pass "lomiri 会话缩放覆盖已写入"
+  else
+    fail "缺少 /etc/default/lomiri-desktop-session 的 DEFAULT_GRID_UNIT_PX=21"
+  fi
+fi
+
 # 传感器守护进程不仅要存在，还必须真的被 enable（否则传感器链路不工作）
 if [[ -f /usr/lib/systemd/system/adsprpcd-sensorspd.service ]]; then
   if systemctl is-enabled adsprpcd-sensorspd.service >/dev/null 2>&1 \
@@ -119,6 +164,7 @@ if [[ "${DESKTOP:-server}" != "server" ]]; then
   case "${DESKTOP:-}" in
     GNOME)       dm="gdm3" ;;
     "KDE Plasma") dm="sddm" ;;
+    Lomiri)      dm="greetd" ;;
   esac
   if [[ -n "$dm" ]]; then
     if [[ -e /etc/systemd/system/display-manager.service ]] \
