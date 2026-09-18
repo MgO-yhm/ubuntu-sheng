@@ -153,6 +153,37 @@ jobs:
           sudo cp debs/*.deb "$R/root/debs/"
           sudo rm -rf "$R/DEBIAN" "$R/usr/lib/firmware/DEBIAN"
 
+          # 显示缩放与形态。sheng 是 12.4" 3048x2032（295 PPI）平板；不配的话
+          # libdeviceinfo 落到 default.yaml 的 desktop 档位（GridUnit 8，等于
+          # "普通笔记本"），Lomiri UI 会小 2.5 倍 —— 触控命中区域完全不对。
+          # UBports 参考表里 299 PPI 的 Nexus 10 用 20，deviceinfo 的 tablet
+          # 档位是 21。设备匹配走 /proc/device-tree/model（DT model 见下）。
+          sudo mkdir -p "$R/etc/deviceinfo/devices" "$R/etc/default"
+          printf '%s\n' \
+            'sheng:' \
+            '  Names:' \
+            '    - "Xiaomi Pad 6S Pro 12.4"' \
+            '    - "xiaomi,sheng"' \
+            '    - "Xiaomi-Pad6SPro"' \
+            '    - "sheng"' \
+            '  PrettyName: "Xiaomi Pad 6S Pro 12.4"' \
+            '  DeviceType: tablet' \
+            '  GridUnit: 21' \
+            '  WebkitDpr: 2' \
+            '  SupportedOrientations:' \
+            '    - Portrait' \
+            '    - InvertedPortrait' \
+            '    - Landscape' \
+            '    - InvertedLandscape' \
+            '  PrimaryOrientation: Landscape' \
+            | sudo tee "$R/etc/deviceinfo/devices/sheng.yaml" >/dev/null
+          # lomiri-session 开头就 source 这个文件，DEFAULT_* 直接短路掉 device-info
+          printf '%s\n' \
+            'DEFAULT_GRID_UNIT_PX=21' \
+            'DEFAULT_NATIVE_ORIENTATION=Landscape' \
+            | sudo tee "$R/etc/default/lomiri-desktop-session" >/dev/null
+          printf 'CHASSIS=tablet\n' | sudo tee "$R/etc/machine-info" >/dev/null
+
       - name: Write in-chroot script
         run: |
           set -euxo pipefail
