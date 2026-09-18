@@ -36,6 +36,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y -qq debootstrap zstd
 
+      - name: Fetch device firmware (sheng-firmware)
+        run: |
+          set -euxo pipefail
+          # 仓库里的 firmware-xiaomi-sheng/ 只有 DEBIAN 骨架（见 README），
+          # 真固件在上游：ath12k/WCN7850、QCA 蓝牙、Cirrus DSP、novatek/nanosic、指纹
+          git clone --depth 1 --branch master https://github.com/ianchb/sheng-firmware firmware-src
+          du -sh firmware-src
+          ls firmware-src
+
       - name: Download linux-xiaomi-sheng deb
         env:
           GH_TOKEN: ${{ github.token }}
@@ -104,7 +113,12 @@ jobs:
           sudo cp -L /etc/resolv.conf "$R/etc/resolv.conf"
           # 仓库里已有的设备素材
           [ -d alsa-xiaomi-sheng ]     && { sudo mkdir -p "$R/usr/share/alsa/ucm2"; sudo cp -a alsa-xiaomi-sheng/. "$R/usr/share/alsa/ucm2/"; } || true
-          [ -d firmware-xiaomi-sheng ] && { sudo mkdir -p "$R/usr/lib/firmware";   sudo cp -a firmware-xiaomi-sheng/. "$R/usr/lib/firmware/"; sudo find "$R/usr/lib/firmware" -name '*.sig' -delete; } || true
+          [ -d firmware-src ] && {
+            sudo mkdir -p "$R/usr/lib/firmware"
+            sudo cp -a firmware-src/. "$R/usr/lib/firmware/"
+            sudo rm -rf "$R/usr/lib/firmware/.git" "$R/usr/lib/firmware/.github" "$R/usr/lib/firmware/.gitignore"
+            echo "固件文件数: $(sudo find "$R/usr/lib/firmware" -type f | wc -l)"
+          } || echo "!! 没有 firmware-src，固件会缺失"
           [ -d sheng-sensors-files ]   && sudo cp -a sheng-sensors-files/. "$R/" || true
           [ -d sheng-devauth ]         && sudo cp -a sheng-devauth/. "$R/" || true
           # 这些包里都带 DEBIAN/，照抄会把骨架目录铺到根上
@@ -286,7 +300,7 @@ jobs:
           set -euxo pipefail
           R="$PWD/rootfs"
           echo "=== init ==="
-          sudo chroot "$R" /bin/bash -c 'cd / && readlink -f /sbin/init; ls -l /usr/bin/lomiri-session /usr/share/wayland-sessions/lomiri.desktop /etc/systemd/system/diag.service /etc/systemd/system/display-manager.service; echo "--- getty@tty1 ---"; readlink -f "/etc/systemd/system/getty@tty1.service"; echo "--- greetd ---"; cat /etc/greetd/config.toml; echo "--- modules ---"; ls /lib/modules' || true
+          sudo chroot "$R" /bin/bash -c 'cd / && readlink -f /sbin/init; ls -l /usr/bin/lomiri-session /usr/share/wayland-sessions/lomiri.desktop /etc/systemd/system/diag.service /etc/systemd/system/display-manager.service; echo "--- getty@tty1 ---"; readlink -f "/etc/systemd/system/getty@tty1.service"; echo "--- greetd ---"; cat /etc/greetd/config.toml; echo "--- modules ---"; ls /lib/modules; echo "--- firmware ---"; ls /usr/lib/firmware | head -20; echo "固件文件数: $(find /usr/lib/firmware -type f | wc -l)"' || true
           echo "=== size ==="
           # proc 已挂上，表项随时消失会让 du 返回 1，别让 set -e 抓走
           sudo du -sh --exclude=proc --exclude=sys --exclude=dev "$R" 2>/dev/null || true
