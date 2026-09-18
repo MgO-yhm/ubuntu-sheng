@@ -111,7 +111,18 @@ jobs:
           set -euxo pipefail
           export DEBIAN_FRONTEND=noninteractive
 
+          # chroot 里不要真去启服务：policy-rc.d 返回 101 让 invoke-rc.d 直接放弃
+          printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d
+          chmod +x /usr/sbin/policy-rc.d
+
           apt-get update
+
+          # dbus 和 file 必须赶在 lomiri 之前：NetworkManager 的 postinst 要调 `file`，
+          # 而它和 usermetricsservice 都要连 system bus。缺这两样时 configure 阶段
+          # 会成片 exit 73，看起来像 lomiri 装不上，其实跟 lomiri 无关。
+          apt-get install -y --no-install-recommends dbus file
+          mkdir -p /run/dbus
+          dbus-daemon --system --fork || true
 
           echo "=== 可用的 lomiri 相关包 ==="
           apt-cache search lomiri | head -40 || true
@@ -120,11 +131,18 @@ jobs:
           echo "=== 安装 Lomiri ==="
           # 主包是关键路径：装不上这次构建就没有意义，直接失败并打印诊断。
           if ! apt-get install -y --no-install-recommends lomiri; then
-            echo "=== lomiri 安装失败，诊断 ==="
-            apt-cache policy lomiri || true
-            apt-cache search '^lomiri' | head -40 || true
-            exit 1
+            echo "=== 第一次失败：修完 dpkg 状态再试一次 ==="
+            dpkg --configure -a || true
+            apt-get install -f -y --no-install-recommends || true
+            apt-get install -y --no-install-recommends lomiri || {
+              echo "=== lomiri 安装失败，诊断 ==="
+              apt-cache policy lomiri || true
+              dpkg -l | grep -Ev '^ii' | head -30 || true
+              exit 1
+            }
           fi
+          dpkg -s lomiri | grep -q 'Status: install ok installed' \
+            || { echo "lomiri 未处于已配置状态"; exit 1; }
 
           # 其余都是尽力而为，缺哪个都不该让整次构建挂掉
           apt-get install -y --no-install-recommends \
