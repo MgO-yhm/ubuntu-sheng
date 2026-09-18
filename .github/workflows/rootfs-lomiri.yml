@@ -117,7 +117,8 @@ jobs:
           # Lomiri 安装与系统配置。在 chroot 内以 root 执行。
           set -euxo pipefail
           export DEBIAN_FRONTEND=noninteractive
-
+          cd /
+          echo "cwd=$(pwd) 根目录属主=$(stat -c '%u:%g' /)"
           # chroot 里不要真去启服务：policy-rc.d 返回 101 让 invoke-rc.d 直接放弃
           printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d
           chmod +x /usr/sbin/policy-rc.d
@@ -227,7 +228,11 @@ jobs:
           sudo cp "$PWD/chroot/setup.sh" "$PWD/rootfs/setup.sh"
           sudo mkdir -p "$PWD/rootfs/root"
           sudo cp debs/*.deb "$PWD/rootfs/root/" 2>/dev/null || true
-          sudo chroot "$PWD/rootfs" /bin/bash /setup.sh
+          # chroot 不改变 cwd！不先 cd / 的话进程 cwd 还指着宿主工作目录
+          # (uid 1001)，systemd-tmpfiles 做相对路径 canonicalization 时会报
+          # "Detected unsafe path transition / (owned by 1001) → /run ..."，
+          # 于是 openvpn/usermetricsservice 这类 postinst 统统 exit 73。
+          sudo chroot "$PWD/rootfs" /bin/bash -c 'cd / && exec /bin/bash /setup.sh'
           sudo rm -f "$PWD/rootfs/setup.sh"
 
       - name: "[chroot] Extra packages"
@@ -235,14 +240,14 @@ jobs:
         run: |
           set -euxo pipefail
           sudo cp "$PWD/rootfs/etc/resolv.conf" /tmp/rc.bak || true
-          sudo chroot "$PWD/rootfs" /bin/bash -c "export DEBIAN_FRONTEND=noninteractive; apt-get update && apt-get install -y --no-install-recommends ${{ inputs.extra_packages }}"
+          sudo chroot "$PWD/rootfs" /bin/bash -c "cd / && export DEBIAN_FRONTEND=noninteractive && apt-get update && apt-get install -y --no-install-recommends ${{ inputs.extra_packages }}"
 
       - name: Verify
         run: |
           set -euxo pipefail
           R="$PWD/rootfs"
           echo "=== init ==="
-          sudo chroot "$R" /bin/bash -c 'readlink -f /sbin/init; ls -d /usr/share/lomiri* 2>/dev/null | head; ls -l /etc/greetd/config.toml' || true
+          sudo chroot "$R" /bin/bash -c 'cd / && readlink -f /sbin/init; ls -d /usr/share/lomiri* 2>/dev/null | head; ls -l /etc/greetd/config.toml; ls /lib/modules' || true
           echo "=== size ==="
           sudo du -sh "$R"
 
