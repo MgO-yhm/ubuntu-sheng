@@ -33,8 +33,6 @@ install -d "$MOUNT/root/sheng-build"
 cp -a "$REPO_ROOT/scripts/common"    "$MOUNT/root/sheng-build/"
 cp -a "$REPO_ROOT/scripts/in-chroot" "$MOUNT/root/sheng-build/"
 cp -a "$REPO_ROOT/scripts/lists"     "$MOUNT/root/sheng-build/"
-# niri 的默认配置（Niri 桌面用；语法由 90-verify.sh 的 niri validate 校验）
-[[ -d "$REPO_ROOT/scripts/niri" ]] && cp -a "$REPO_ROOT/scripts/niri" "$MOUNT/root/sheng-build/"
 chmod -R 755 "$MOUNT/root/sheng-build"
 
 # 设备包 .deb 入镜像 /tmp/debs

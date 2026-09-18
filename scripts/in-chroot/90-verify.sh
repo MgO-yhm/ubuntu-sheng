@@ -102,35 +102,6 @@ if [[ "${AUTOLOGIN:-false}" == "true" ]]; then
   esac
 fi
 
-# 4a2) Niri 会话链路（niri 不在 Ubuntu 归档里，全靠自建 deb + 自写配置）
-if [[ "${DESKTOP:-server}" == "Niri" ]]; then
-  for f in /usr/bin/niri /usr/bin/niri-session /usr/share/wayland-sessions/niri.desktop; do
-    [[ -e "$f" ]] && pass "存在 $f" || fail "缺少 $f"
-  done
-  if [[ -f /etc/greetd/config.toml ]] && grep -q 'niri-session' /etc/greetd/config.toml; then
-    pass "greetd 指向 niri-session"
-  else
-    fail "greetd 未指向 niri-session（检查 /etc/greetd/config.toml）"
-  fi
-  if [[ "$(readlink -f /etc/systemd/system/getty@tty1.service 2>/dev/null)" == "/dev/null" ]]; then
-    pass "getty@tty1 已 mask（greetd 独占 vt1）"
-  else
-    fail "getty@tty1 未 mask，会和 greetd 抢 tty1"
-  fi
-  # 默认配置必须真的能过 niri 自己的校验：配置有语法错时 niri 会拒绝启动，
-  # 而真机上那只会表现为黑屏，非常难查。
-  cfg="/home/${USERNAME:-username}/.config/niri/config.kdl"
-  if [[ -f "$cfg" ]]; then
-    if command -v niri >/dev/null 2>&1 && niri validate -c "$cfg" >/tmp/niri-validate.log 2>&1; then
-      pass "niri 默认配置通过 niri validate"
-    else
-      fail "niri 默认配置未通过校验（$cfg）：$(tr '\n' ' ' < /tmp/niri-validate.log | head -c 300)"
-    fi
-  else
-    warn "没有 $cfg，niri 会用内置默认配置"
-  fi
-fi
-
 # 4b) Lomiri 会话链路（缺任何一环，真机上就停在 tty1 的登录提示）
 if [[ "${DESKTOP:-server}" == "Lomiri" ]]; then
   for f in /usr/bin/lomiri /usr/bin/lomiri-session \

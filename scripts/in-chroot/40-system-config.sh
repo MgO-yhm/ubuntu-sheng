@@ -156,37 +156,6 @@ EOF
     systemctl enable greetd.service || warn "启用 greetd 失败"
     systemctl set-default graphical.target
     ;;
-  Niri)
-    # 与 Lomiri 同理：greetd 的 [default_session] 命令就是会话本体，
-    # 设成 niri-session 即等价于自动登录（niri-session 会拉起 systemd user 会话）。
-    if [[ "$AUTOLOGIN" != "true" ]]; then
-      warn "Niri 经 greetd 恒为自动登录（[default_session] 即会话命令），autologin=false 已忽略"
-    fi
-    log "配置 greetd 启动 niri 会话: $USERNAME"
-    install -d /etc/greetd
-    cat > /etc/greetd/config.toml <<EOF
-[terminal]
-vt = 1
-
-[default_session]
-command = "/usr/bin/niri-session"
-user = "$USERNAME"
-EOF
-    systemctl mask getty@tty1.service || warn "mask getty@tty1 失败"
-    systemctl enable greetd.service || warn "启用 greetd 失败"
-    systemctl set-default graphical.target
-
-    # 平板取向的默认配置（脚本目录已在 02-mount-chroot.sh 里拷进镜像）。
-    # 语法由 90-verify.sh 用 `niri validate` 校验 —— 配置写错 niri 会拒绝启动。
-    cfg_src="$BUILD_DIR/niri/sheng-tablet.kdl"
-    if [[ -f "$cfg_src" ]]; then
-      install -d -o "$USERNAME" -g "$USERNAME" "/home/$USERNAME/.config/niri"
-      install -m644 -o "$USERNAME" -g "$USERNAME" "$cfg_src" "/home/$USERNAME/.config/niri/config.kdl"
-      log "已写入 niri 默认配置（可自由修改）: /home/$USERNAME/.config/niri/config.kdl"
-    else
-      warn "没有 $cfg_src：niri 将使用内置默认配置"
-    fi
-    ;;
   server)
     log "server 模式：不配置显示管理器"
     ;;

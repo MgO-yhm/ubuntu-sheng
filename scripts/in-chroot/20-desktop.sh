@@ -59,34 +59,11 @@ case "$DESKTOP" in
     [[ -x /usr/bin/lomiri-session ]] || die "缺少 /usr/bin/lomiri-session（镜像不可用）"
     apt_install_list_best_effort "$BUILD_DIR/lists/lomiri.list"
     ;;
-  Niri)
-    log "安装 Niri（滚动平铺 Wayland 合成器）"
-    # niri / noctalia / mpvpaper 都不在 Ubuntu 归档里，由独立仓库
-    # code002-2/ubuntu-niri-repo 构建并发布成 apt 源（pool 下没有 n/niri，
-    # Launchpad 上也没有源包，所以必须自建）。构建在那边做，这边只消费，
-    # 避免同一个包两处构建、两处版本。
-    if [[ -n "${NIRI_REPO:-}" ]]; then
-      log "加入自建 apt 源: $NIRI_REPO"
-      printf 'deb [trusted=yes arch=arm64] %s stable main\n' "$NIRI_REPO" \
-        > /etc/apt/sources.list.d/ubuntu-niri-repo.list
-      # trusted=yes：该源不做 GPG 签名（自用设备）。apt 不会校验来源，
-      # 所以要确保 NIRI_REPO 指向的是我们自己的 Pages 地址。
-    else
-      die "NIRI_REPO 为空：niri 只在自建源里有，没源就装不上（见 rootfs.yml 的 niri_repo 输入项）"
-    fi
-    apt_update
-    # niri 是硬性要求；noctalia/mpvpaper 在 lists 里走 best_effort
-    apt_install niri
-    command -v niri >/dev/null 2>&1 || die "niri 装上了但 PATH 里找不到可执行文件"
-    command -v niri-session >/dev/null 2>&1 || die "缺少 niri-session（greetd 靠它起会话）"
-    [[ -f /usr/share/wayland-sessions/niri.desktop ]] || die "缺少 niri 的 wayland-sessions 描述文件"
-    apt_install_list_best_effort "$BUILD_DIR/lists/niri.list"
-    ;;
   server)
     log "desktop=server：不安装桌面环境"
     ;;
   *)
-    die "未知的 DESKTOP: $DESKTOP（可选 GNOME / KDE Plasma / Lomiri / Niri / server）"
+    die "未知的 DESKTOP: $DESKTOP（可选 GNOME / KDE Plasma / Lomiri / server）"
     ;;
 esac
 
