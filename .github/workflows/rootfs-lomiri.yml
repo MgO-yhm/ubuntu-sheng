@@ -21,10 +21,19 @@ on:
         default: ''
 
 jobs:
+  # 设备功能包（libssc / sheng-sensors / sheng-devauth / firmware-xiaomi-sheng
+  # / 6 个 xiaomi-*：触控 THP、笔、指纹、键盘、快充、充电模式）只能从源码编，
+  # 正好复用仓库现成的 _packages.yml。
+  packages:
+    uses: ./.github/workflows/_packages.yml
+    with:
+      kernel_source: prebuilt
+
   build:
     name: Assemble Ubuntu + Lomiri RootFS
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 120
+    needs: [packages]
 
     steps:
       - name: Checkout
@@ -36,21 +45,49 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y -qq debootstrap zstd
 
-      - name: Fetch device firmware (sheng-firmware)
+      - name: Collect device packages
+        uses: actions/download-artifact@v4
+        with: { name: libssc-deb, path: debs }
+      - name: Collect iio-sensor-proxy
+        uses: actions/download-artifact@v4
+        with: { name: iio-sensor-proxy-deb, path: debs }
+      - name: Collect fastrpc
+        uses: actions/download-artifact@v4
+        with: { name: fastrpc-deb, path: debs }
+      - name: Collect sheng-sensors
+        uses: actions/download-artifact@v4
+        with: { name: sheng-sensors-deb, path: debs }
+      - name: Collect sheng-devauth
+        uses: actions/download-artifact@v4
+        with: { name: sheng-devauth-deb, path: debs }
+      - name: Collect alsa-xiaomi-sheng
+        uses: actions/download-artifact@v4
+        with: { name: alsa-xiaomi-sheng-deb, path: debs }
+      - name: Collect firmware-xiaomi-sheng
+        uses: actions/download-artifact@v4
+        with: { name: firmware-xiaomi-sheng-deb, path: debs }
+      - name: Collect xiaomi-* packages
+        uses: actions/download-artifact@v4
+        with: { name: xiaomi-debs, path: debs }
+
+      - name: Verify collected device packages
         run: |
           set -euxo pipefail
-          # 仓库里的 firmware-xiaomi-sheng/ 只有 DEBIAN 骨架（见 README），
-          # 真固件在上游：ath12k/WCN7850、QCA 蓝牙、Cirrus DSP、novatek/nanosic、指纹
-          git clone --depth 1 --branch master https://github.com/ianchb/sheng-firmware firmware-src
-          du -sh firmware-src
-          ls firmware-src
+          ls -lh debs/ | sed 's/^/    /'
+          missing=0
+          for p in libssc sheng-sensors sheng-devauth firmware-xiaomi-sheng \
+                   alsa-xiaomi-sheng xiaomi-sheng-thp; do
+            if ! compgen -G "debs/${p}*.deb" >/dev/null; then
+              echo "::error::缺少必需的设备包: ${p}"; missing=1
+            fi
+          done
+          [ "$missing" -eq 0 ] || exit 1
 
       - name: Download linux-xiaomi-sheng deb
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euxo pipefail
-          mkdir -p debs
           # sda29 上的 Image 就是这个内核，模块版本必须和它一致，否则触摸/音频等全废
           TAG=$(gh release list --repo ianchb/sm8550-mainline --limit 1 --json tagName --jq '.[0].tagName')
           echo "内核 release: $TAG"
@@ -111,17 +148,9 @@ jobs:
           # 符号链接，cp 不会穿透写，先删掉
           sudo rm -f "$R/etc/resolv.conf"
           sudo cp -L /etc/resolv.conf "$R/etc/resolv.conf"
-          # 仓库里已有的设备素材
-          [ -d alsa-xiaomi-sheng ]     && { sudo mkdir -p "$R/usr/share/alsa/ucm2"; sudo cp -a alsa-xiaomi-sheng/. "$R/usr/share/alsa/ucm2/"; } || true
-          [ -d firmware-src ] && {
-            sudo mkdir -p "$R/usr/lib/firmware"
-            sudo cp -a firmware-src/. "$R/usr/lib/firmware/"
-            sudo rm -rf "$R/usr/lib/firmware/.git" "$R/usr/lib/firmware/.github" "$R/usr/lib/firmware/.gitignore"
-            echo "固件文件数: $(sudo find "$R/usr/lib/firmware" -type f | wc -l)"
-          } || echo "!! 没有 firmware-src，固件会缺失"
-          [ -d sheng-sensors-files ]   && sudo cp -a sheng-sensors-files/. "$R/" || true
-          [ -d sheng-devauth ]         && sudo cp -a sheng-devauth/. "$R/" || true
-          # 这些包里都带 DEBIAN/，照抄会把骨架目录铺到根上
+          # 设备包统一从 debs/ 装进 chroot（固件、触控、传感器、指纹…都在这）
+          sudo mkdir -p "$R/root/debs"
+          sudo cp debs/*.deb "$R/root/debs/"
           sudo rm -rf "$R/DEBIAN" "$R/usr/lib/firmware/DEBIAN"
 
       - name: Write in-chroot script
@@ -191,15 +220,27 @@ jobs:
             locales tzdata kmod fonts-noto-cjk \
             || echo "部分辅助包安装失败（不致命，继续）"
 
-          echo "=== 内核包 ==="
-          if compgen -G '/root/*.deb' >/dev/null; then
-            dpkg -i /root/*.deb || apt-get -f install -y --no-install-recommends || true
-            echo "--- /lib/modules ---"
-            ls /lib/modules || true
-            rm -f /root/*.deb   # 259M，装完就删，别打进 tarball
+          echo "=== 设备包（内核 / libssc / 触控 / 传感器 / 固件 / 指纹 / 快充…） ==="
+          ls -1 /root/debs | sed 's/^/    /' || true
+          if compgen -G '/root/debs/*.deb' >/dev/null; then
+            # 用 apt 装本地 deb：跨包依赖（thp 要 libssc，键盘助手要 sheng-sensors
+            # 等）和归档里的依赖（python3/bluez/fprintd/Qt6）一次解析完
+            apt-get install -y --no-install-recommends /root/debs/*.deb || {
+              echo "=== apt 装本地 deb 失败，退回 dpkg + 修依赖 ==="
+              dpkg -i /root/debs/*.deb || true
+              apt-get -f install -y --no-install-recommends || true
+              dpkg --configure -a || true
+            }
           else
-            echo "没有内核 deb：模块缺失（显示能起，触摸/音频/电量大半不行）"
+            echo "!! debs 目录是空的"
           fi
+          echo "--- /lib/modules ---"; ls /lib/modules || true
+          echo "--- 固件文件数 ---"; find /usr/lib/firmware -type f 2>/dev/null | wc -l
+          systemctl enable xiaomi-sheng-thp.service || true
+          # 触控就是这次要补的东西，装不上直接失败，别产出一个没触控的镜像
+          dpkg -s xiaomi-sheng-thp 2>/dev/null | grep -q 'Status: install ok installed' \
+            || { echo "!! xiaomi-sheng-thp 没装上"; exit 1; }
+          rm -rf /root/debs   # 内核 deb 259M，打完就删不要进 tarball
 
           echo "=== 用户 ==="
           id ubuntu >/dev/null 2>&1 || useradd -m -s /bin/bash ubuntu
@@ -300,7 +341,7 @@ jobs:
           set -euxo pipefail
           R="$PWD/rootfs"
           echo "=== init ==="
-          sudo chroot "$R" /bin/bash -c 'cd / && readlink -f /sbin/init; ls -l /usr/bin/lomiri-session /usr/share/wayland-sessions/lomiri.desktop /etc/systemd/system/diag.service /etc/systemd/system/display-manager.service; echo "--- getty@tty1 ---"; readlink -f "/etc/systemd/system/getty@tty1.service"; echo "--- greetd ---"; cat /etc/greetd/config.toml; echo "--- modules ---"; ls /lib/modules; echo "--- firmware ---"; ls /usr/lib/firmware | head -20; echo "固件文件数: $(find /usr/lib/firmware -type f | wc -l)"' || true
+          sudo chroot "$R" /bin/bash -c 'cd / && readlink -f /sbin/init; ls -l /usr/bin/lomiri-session /usr/share/wayland-sessions/lomiri.desktop /etc/systemd/system/diag.service /etc/systemd/system/display-manager.service; echo "--- getty@tty1 ---"; readlink -f "/etc/systemd/system/getty@tty1.service"; echo "--- greetd ---"; cat /etc/greetd/config.toml; echo "--- modules ---"; ls /lib/modules; echo "--- firmware 文件数 ---"; find /usr/lib/firmware -type f | wc -l; echo "--- 设备包 ---"; dpkg -l | grep -E "xiaomi-|libssc|sheng-" | awk "{print \$1, \$2, \$3}"; echo "--- thp 服务 ---"; ls -l /usr/lib/systemd/system/xiaomi-sheng-thp.service; grep -c . /proc/nvt_thp_raw 2>/dev/null || echo "(/proc 是宿主内核，这项在真机上才有意义)"' || true
           echo "=== size ==="
           # proc 已挂上，表项随时消失会让 du 返回 1，别让 set -e 抓走
           sudo du -sh --exclude=proc --exclude=sys --exclude=dev "$R" 2>/dev/null || true
