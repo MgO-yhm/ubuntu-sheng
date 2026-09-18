@@ -36,6 +36,19 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y -qq debootstrap zstd
 
+      - name: Download linux-xiaomi-sheng deb
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euxo pipefail
+          mkdir -p debs
+          # sda29 上的 Image 就是这个内核，模块版本必须和它一致，否则触摸/音频等全废
+          TAG=$(gh release list --repo ianchb/sm8550-mainline --limit 1 --json tagName --jq '.[0].tagName')
+          echo "内核 release: $TAG"
+          gh release download "$TAG" --repo ianchb/sm8550-mainline \
+            --pattern 'linux-xiaomi-sheng*.deb' --clobber --dir debs
+          ls -lh debs/
+
       - name: Debootstrap Ubuntu arm64 (main+universe)
         run: |
           set -euxo pipefail
@@ -78,7 +91,10 @@ jobs:
             "deb http://ports.ubuntu.com/ubuntu-ports ${{ inputs.ubuntu_series }}-updates main universe" \
             "deb http://ports.ubuntu.com/ubuntu-ports ${{ inputs.ubuntu_series }}-security main universe" \
             | sudo tee "$R/etc/apt/sources.list" >/dev/null
-          sudo cp /etc/resolv.conf "$R/etc/resolv.conf"
+          # debootstrap 写出的 resolv.conf 是指向 /run/systemd/resolve/... 的悬空
+          # 符号链接，cp 不会穿透写，先删掉
+          sudo rm -f "$R/etc/resolv.conf"
+          sudo cp -L /etc/resolv.conf "$R/etc/resolv.conf"
           # 仓库里已有的设备素材
           [ -d alsa-xiaomi-sheng ]     && { sudo mkdir -p "$R/usr/share/alsa/ucm2"; sudo cp -a alsa-xiaomi-sheng/. "$R/usr/share/alsa/ucm2/"; } || true
           [ -d firmware-xiaomi-sheng ] && { sudo mkdir -p "$R/usr/lib/firmware";   sudo cp -a firmware-xiaomi-sheng/. "$R/usr/lib/firmware/"; sudo find "$R/usr/lib/firmware" -name '*.sig' -delete; } || true
@@ -102,37 +118,62 @@ jobs:
           apt-cache policy lomiri || true
 
           echo "=== 安装 Lomiri ==="
-          # 主包自动拉依赖。greetd 负责登录会话。
+          # 主包是关键路径：装不上这次构建就没有意义，直接失败并打印诊断。
+          if ! apt-get install -y --no-install-recommends lomiri; then
+            echo "=== lomiri 安装失败，诊断 ==="
+            apt-cache policy lomiri || true
+            apt-cache search '^lomiri' | head -40 || true
+            exit 1
+          fi
+
+          # 其余都是尽力而为，缺哪个都不该让整次构建挂掉
           apt-get install -y --no-install-recommends \
-            lomiri \
-            lomiri-system-settings \
-            greetd \
-            network-manager \
-            pipewire pipewire-pulse wireplumber \
-            openssh-server \
-            locales \
-            fonts-noto-cjk \
-            kmod \
-            || { echo "=== lomiri 安装失败 ==="; apt-cache policy lomiri; exit 1; }
+            lomiri-system-settings greetd network-manager \
+            pipewire pipewire-pulse wireplumber openssh-server \
+            locales tzdata kmod fonts-noto-cjk \
+            || echo "部分辅助包安装失败（不致命，继续）"
+
+          echo "=== 内核包 ==="
+          if compgen -G '/root/*.deb' >/dev/null; then
+            dpkg -i /root/*.deb || apt-get -f install -y --no-install-recommends || true
+            echo "--- /lib/modules ---"
+            ls /lib/modules || true
+          else
+            echo "没有内核 deb：模块缺失（显示能起，触摸/音频/电量大半不行）"
+          fi
 
           echo "=== 用户 ==="
-          id ubuntu >/dev/null 2>&1 || useradd -m -s /bin/bash -G sudo,video,input,audio,render ubuntu
+          id ubuntu >/dev/null 2>&1 || useradd -m -s /bin/bash ubuntu
+          for g in sudo video input audio render plugdev netdev; do
+            if getent group "$g" >/dev/null; then usermod -aG "$g" ubuntu; fi
+          done
           echo 'ubuntu:ubuntu' | chpasswd
           printf '%s\n' 'ubuntu ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/ubuntu
           chmod 0440 /etc/sudoers.d/ubuntu
           echo sheng > /etc/hostname
           grep -q sheng /etc/hosts || printf '%s\n' '127.0.1.1 sheng' >> /etc/hosts
 
-          echo "=== greetd 指向 lomiri ==="
+          echo "=== locale ==="
+          sed -i -E 's/^# *(en_US|zh_CN)\.UTF-8/\1.UTF-8/' /etc/locale.gen || true
+          locale-gen || true
+          printf 'LANG=en_US.UTF-8\n' > /etc/default/locale
+
+          echo "=== greetd 启动 Lomiri 会话 ==="
+          echo "--- lomiri 提供的入口 ---"
+          dpkg -L lomiri | grep -E 'bin/|wayland-sessions|xsessions' || true
+          SESSION=lomiri
+          if [ -x /usr/bin/lomiri-session ]; then SESSION=lomiri-session; fi
+          echo "会话命令: $SESSION"
           mkdir -p /etc/greetd
           printf '%s\n' \
             '[terminal]' \
             'vt = 1' \
             '' \
             '[default_session]' \
-            'command = "lomiri"' \
+            "command = \"$SESSION\"" \
             'user = "ubuntu"' \
             > /etc/greetd/config.toml
+          cat /etc/greetd/config.toml
 
           systemctl enable greetd.service   || true
           systemctl enable ssh.service      || true
@@ -159,6 +200,8 @@ jobs:
         run: |
           set -euxo pipefail
           sudo cp "$PWD/chroot/setup.sh" "$PWD/rootfs/setup.sh"
+          sudo mkdir -p "$PWD/rootfs/root"
+          sudo cp debs/*.deb "$PWD/rootfs/root/" 2>/dev/null || true
           sudo chroot "$PWD/rootfs" /bin/bash /setup.sh
           sudo rm -f "$PWD/rootfs/setup.sh"
 
@@ -191,7 +234,7 @@ jobs:
           sudo tar -cf ../rootfs.tar .
           cd ..
           sudo chown "$(id -u):$(id -g)" rootfs.tar
-          zstd -T0 -19 -o rootfs.tar.zst rootfs.tar
+          zstd -T0 -12 -o rootfs.tar.zst rootfs.tar
           rm -f rootfs.tar
           ls -lh rootfs.tar.zst
 
