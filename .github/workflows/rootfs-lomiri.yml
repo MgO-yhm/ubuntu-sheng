@@ -1,0 +1,194 @@
+name: Build RootFS (Ubuntu + Lomiri)
+
+# 在 ubuntu-sheng 基础上加一个 Lomiri 变体，完全自包含，不改动现有 workflow/scripts。
+#
+# Lomiri = 原 Ubuntu Touch 的 Unity8。显示栈是 Mir + Qt/QML，Mir 直接走 DRM/KMS，
+# 所以不需要 libhybris / Android vendor 层，能在纯 mainline 内核（sheng 的内核）上跑。
+# 这正是它区别于 Sailfish / Droidian 的地方。
+#
+# 输出 rootfs.tar.zst：解到 fydeos 分区(sda30)，U-Boot 用 extlinux.conf 引导。
+
+on:
+  workflow_dispatch:
+    inputs:
+      ubuntu_series:
+        description: 'Ubuntu 系列（26.10 目前是 devel；26.04 是 resolute）'
+        type: string
+        default: 'devel'
+      extra_packages:
+        description: '额外安装的包（空格分隔）'
+        type: string
+        default: ''
+
+jobs:
+  build:
+    name: Assemble Ubuntu + Lomiri RootFS
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y -qq mmdebstrap zstd
+
+      - name: Debootstrap Ubuntu arm64 (main+universe)
+        run: |
+          set -euxo pipefail
+          # universe 是必须的：lomiri 在 universe 里
+          sudo mmdebstrap \
+            --arch=arm64 \
+            --variant=minbase \
+            --components=main,universe \
+            --include=ca-certificates,gnupg,apt-utils,systemd,systemd-sysv,sudo,locales,tzdata,kmod,udev \
+            "${{ inputs.ubuntu_series }}" \
+            "$PWD/rootfs"
+          echo "=== base built ==="
+          sudo du -sh "$PWD/rootfs"
+
+      - name: Mount chroot
+        run: |
+          set -euxo pipefail
+          R="$PWD/rootfs"
+          for d in dev dev/pts proc sys run tmp; do sudo mkdir -p "$R/$d"; done
+          sudo mount --bind /dev     "$R/dev"
+          sudo mount --bind /dev/pts "$R/dev/pts"
+          sudo mount -t proc  proc   "$R/proc"
+          sudo mount -t sysfs sysfs  "$R/sys"
+          sudo mount -t tmpfs tmpfs  "$R/run"
+          # 26.10 的开发版仓库走 ports
+          sudo mkdir -p "$R/etc/apt"
+          printf '%s\n' \
+            "deb http://ports.ubuntu.com/ubuntu-ports ${{ inputs.ubuntu_series }} main universe" \
+            "deb http://ports.ubuntu.com/ubuntu-ports ${{ inputs.ubuntu_series }}-updates main universe" \
+            "deb http://ports.ubuntu.com/ubuntu-ports ${{ inputs.ubuntu_series }}-security main universe" \
+            | sudo tee "$R/etc/apt/sources.list" >/dev/null
+          sudo cp /etc/resolv.conf "$R/etc/resolv.conf"
+          # 仓库里已有的设备素材
+          [ -d alsa-xiaomi-sheng ]     && { sudo mkdir -p "$R/usr/share/alsa/ucm2"; sudo cp -a alsa-xiaomi-sheng/. "$R/usr/share/alsa/ucm2/"; } || true
+          [ -d firmware-xiaomi-sheng ] && { sudo mkdir -p "$R/usr/lib/firmware";   sudo cp -a firmware-xiaomi-sheng/. "$R/usr/lib/firmware/"; sudo find "$R/usr/lib/firmware" -name '*.sig' -delete; } || true
+          [ -d sheng-sensors-files ]   && sudo cp -a sheng-sensors-files/. "$R/" || true
+          [ -d sheng-devauth ]         && sudo cp -a sheng-devauth/. "$R/" || true
+
+      - name: Write in-chroot script
+        run: |
+          set -euxo pipefail
+          mkdir -p "$PWD/chroot"
+          cat > "$PWD/chroot/setup.sh" <<'EOS'
+          #!/bin/bash
+          # Lomiri 安装与系统配置。在 chroot 内以 root 执行。
+          set -euxo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+
+          apt-get update
+
+          echo "=== 可用的 lomiri 相关包 ==="
+          apt-cache search lomiri | head -40 || true
+          apt-cache policy lomiri || true
+
+          echo "=== 安装 Lomiri ==="
+          # 主包自动拉依赖。greetd 负责登录会话。
+          apt-get install -y --no-install-recommends \
+            lomiri \
+            lomiri-system-settings \
+            greetd \
+            network-manager \
+            pipewire pipewire-pulse wireplumber \
+            openssh-server \
+            locales \
+            fonts-noto-cjk \
+            kmod \
+            || { echo "=== lomiri 安装失败 ==="; apt-cache policy lomiri; exit 1; }
+
+          echo "=== 用户 ==="
+          id ubuntu >/dev/null 2>&1 || useradd -m -s /bin/bash -G sudo,video,input,audio,render ubuntu
+          echo 'ubuntu:ubuntu' | chpasswd
+          printf '%s\n' 'ubuntu ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/ubuntu
+          chmod 0440 /etc/sudoers.d/ubuntu
+          echo sheng > /etc/hostname
+          grep -q sheng /etc/hosts || printf '%s\n' '127.0.1.1 sheng' >> /etc/hosts
+
+          echo "=== greetd 指向 lomiri ==="
+          mkdir -p /etc/greetd
+          printf '%s\n' \
+            '[terminal]' \
+            'vt = 1' \
+            '' \
+            '[default_session]' \
+            'command = "lomiri"' \
+            'user = "ubuntu"' \
+            > /etc/greetd/config.toml
+
+          systemctl enable greetd.service   || true
+          systemctl enable ssh.service      || true
+          systemctl enable NetworkManager.service || true
+
+          echo "=== 触摸需要的 uinput ==="
+          mkdir -p /etc/modules-load.d
+          echo uinput > /etc/modules-load.d/uinput.conf
+
+          echo "=== 去掉 snap（沿用本仓库的 snap-free 立场） ==="
+          systemctl disable --now snapd.service snapd.socket 2>/dev/null || true
+          apt-get purge -y snapd 2>/dev/null || true
+
+          apt-get clean
+          rm -rf /var/lib/apt/lists/*
+          echo "=== setup done ==="
+          EOS
+          # heredoc 带缩进，去掉每行前导空格
+          sed -i 's/^          //' "$PWD/chroot/setup.sh"
+          chmod +x "$PWD/chroot/setup.sh"
+          head -5 "$PWD/chroot/setup.sh"
+
+      - name: "[chroot] Run setup"
+        run: |
+          set -euxo pipefail
+          sudo cp "$PWD/chroot/setup.sh" "$PWD/rootfs/setup.sh"
+          sudo chroot "$PWD/rootfs" /bin/bash /setup.sh
+          sudo rm -f "$PWD/rootfs/setup.sh"
+
+      - name: "[chroot] Extra packages"
+        if: ${{ inputs.extra_packages != '' }}
+        run: |
+          set -euxo pipefail
+          sudo cp "$PWD/rootfs/etc/resolv.conf" /tmp/rc.bak || true
+          sudo chroot "$PWD/rootfs" /bin/bash -c "export DEBIAN_FRONTEND=noninteractive; apt-get update && apt-get install -y --no-install-recommends ${{ inputs.extra_packages }}"
+
+      - name: Verify
+        run: |
+          set -euxo pipefail
+          R="$PWD/rootfs"
+          echo "=== init ==="
+          sudo chroot "$R" /bin/bash -c 'readlink -f /sbin/init; ls -d /usr/share/lomiri* 2>/dev/null | head; ls -l /etc/greetd/config.toml' || true
+          echo "=== size ==="
+          sudo du -sh "$R"
+
+      - name: Unmount
+        if: always()
+        run: |
+          R="$PWD/rootfs"
+          for m in run sys proc dev/pts dev; do sudo umount -lf "$R/$m" 2>/dev/null || true; done
+
+      - name: Pack
+        run: |
+          set -euxo pipefail
+          cd "$PWD/rootfs"
+          sudo tar -cf ../rootfs.tar .
+          cd ..
+          sudo chown "$(id -u):$(id -g)" rootfs.tar
+          zstd -T0 -19 -o rootfs.tar.zst rootfs.tar
+          rm -f rootfs.tar
+          ls -lh rootfs.tar.zst
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: rootfs-ubuntu-lomiri-${{ inputs.ubuntu_series }}
+          path: rootfs.tar.zst
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
