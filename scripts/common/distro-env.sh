@@ -14,6 +14,32 @@ if [[ -f /root/build.env ]]; then
   set +a
 fi
 
+# ── 环境变量卫生 ────────────────────────────────────────────────────────────
+# 上面的 set -a 会把 build.env 里的**每一个**变量导出成环境变量，而 LANGUAGE
+# 用的是 workflow_dispatch choices 的哨兵值 "None (C.UTF-8)" —— 带括号的。
+# 这个值会一路传进 dpkg 子进程，而 keyboard-configuration 的 config 脚本
+# （第 1298 行）有一句：
+#     eval `locale`
+# `locale` 把环境里的值原样打印，eval 吃到括号就报
+#     Syntax error: "(" unexpected
+# 于是 dpkg 在 --unpack 阶段失败：
+#     new keyboard-configuration package preinst ... failed with exit status 2
+# 整个 "[chroot] Install Desktop" 步骤就此中止（Lomiri/GNOME/KDE 都会撞上，
+# 因为默认 language 就是这个哨兵值）。
+#
+# 需要哨兵值的脚本自己会用 ${LANGUAGE:-None (C.UTF-8)} 取回，所以这里必须把它
+# 从环境里摘掉。同理，任何会被子进程 eval 的 locale 变量都不该带 shell 元字符。
+if [[ "${LANGUAGE:-}" == "None (C.UTF-8)" ]]; then
+  unset LANGUAGE
+fi
+case "${LANG:-}" in
+  *\(*|*\)*|*\;*|*\|*|*\`*) unset LANG ;;
+esac
+case "${LC_ALL:-}" in
+  *\(*|*\)*|*\;*|*\|*|*\`*) unset LC_ALL ;;
+esac
+export LANG="${LANG:-C.UTF-8}"
+
 : "${DISTRO_SERIES:=26.04}"
 
 case "$DISTRO_SERIES" in
