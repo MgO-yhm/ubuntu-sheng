@@ -61,23 +61,25 @@ case "$DESKTOP" in
     ;;
   Niri)
     log "安装 Niri（滚动平铺 Wayland 合成器）"
-    apt_update
-    # niri 不在 Ubuntu 归档里（pool 下没有 n/niri，Launchpad 上也没有源包），
-    # 用的是 build-niri 作业从上游 vendored 源码构建的本地 deb ——
-    # 它已经在 /tmp/debs 里（由 scripts/host/02-mount-chroot.sh 拷入）。
-    shopt -s nullglob
-    niri_debs=(/tmp/debs/niri_*.deb)
-    [[ "${#niri_debs[@]}" -gt 0 ]] || die "找不到 niri 的 deb（/tmp/debs/niri_*.deb）：build-niri 作业失败或被跳过"
-    # 用 apt 装本地 deb：libwayland/libseat/libdisplay-info 这些运行时依赖
-    # 由 apt 从归档里补齐，比自己写 Depends 稳
-    if ! apt_install "${niri_debs[@]}"; then
-      warn "niri 首次安装失败，修依赖后重试"
-      apt-get install -f -y || true
-      apt_install "${niri_debs[@]}" || die "niri 安装失败，请看上面的依赖错误"
+    # niri / noctalia / mpvpaper 都不在 Ubuntu 归档里，由独立仓库
+    # code002-2/ubuntu-niri-repo 构建并发布成 apt 源（pool 下没有 n/niri，
+    # Launchpad 上也没有源包，所以必须自建）。构建在那边做，这边只消费，
+    # 避免同一个包两处构建、两处版本。
+    if [[ -n "${NIRI_REPO:-}" ]]; then
+      log "加入自建 apt 源: $NIRI_REPO"
+      printf 'deb [trusted=yes arch=arm64] %s stable main\n' "$NIRI_REPO" \
+        > /etc/apt/sources.list.d/ubuntu-niri-repo.list
+      # trusted=yes：该源不做 GPG 签名（自用设备）。apt 不会校验来源，
+      # 所以要确保 NIRI_REPO 指向的是我们自己的 Pages 地址。
+    else
+      die "NIRI_REPO 为空：niri 只在自建源里有，没源就装不上（见 rootfs.yml 的 niri_repo 输入项）"
     fi
+    apt_update
+    # niri 是硬性要求；noctalia/mpvpaper 在 lists 里走 best_effort
+    apt_install niri
     command -v niri >/dev/null 2>&1 || die "niri 装上了但 PATH 里找不到可执行文件"
-    [[ -f /usr/share/wayland-sessions/niri.desktop ]] || die "缺少 niri 的 wayland-sessions 描述文件"
     command -v niri-session >/dev/null 2>&1 || die "缺少 niri-session（greetd 靠它起会话）"
+    [[ -f /usr/share/wayland-sessions/niri.desktop ]] || die "缺少 niri 的 wayland-sessions 描述文件"
     apt_install_list_best_effort "$BUILD_DIR/lists/niri.list"
     ;;
   server)

@@ -50,6 +50,11 @@ on:
         required: false
         type: boolean
         default: true
+      niri_repo:
+        description: 'niri/noctalia/mpvpaper 的自建 apt 源（默认 code002-2/ubuntu-niri-repo 的 Pages 地址；留空则不加源）'
+        required: false
+        type: string
+        default: 'https://code002-2.github.io/ubuntu-niri-repo/'
       username:
         description: '普通用户名'
         required: false
@@ -332,12 +337,6 @@ jobs:
       - name: Collect firmware-xiaomi-sheng
         uses: actions/download-artifact@v8
         with: { name: firmware-xiaomi-sheng-deb, path: debs }
-      - name: Collect niri
-        # build-niri 是 continue-on-error 的（它失败不该拖垮其它桌面），
-        # 所以这里也要容错：没下到就交给 20-desktop.sh 的 Niri 分支报错。
-        continue-on-error: true
-        uses: actions/download-artifact@v8
-        with: { name: niri-deb, path: debs }
       - name: Collect xiaomi-* packages
         uses: actions/download-artifact@v8
         with: { name: xiaomi-debs, path: debs }
@@ -405,6 +404,7 @@ jobs:
           BOOT_MODE='${{ inputs.boot_mode }}'
           PARTITION_LABEL='${{ steps.parse.outputs.label }}'
           KERNEL_SOURCE='${{ inputs.kernel_source }}'
+          NIRI_REPO='${{ inputs.niri_repo }}'
           EOF
           sudo chmod 600 "$ROOTFS_MOUNT/root/build.env"
           echo "build.env 内容："

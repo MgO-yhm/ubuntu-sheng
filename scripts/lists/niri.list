@@ -1,13 +1,14 @@
-# niri（滚动平铺 Wayland 合成器）的配套包。
+# niri（滚动平铺合成器）的配套包。
 #
-# niri 本体不在 Ubuntu 归档里（pool 下没有 n/niri，Launchpad 上也没有源包），
-# 由 scripts/packages/build-niri.sh 从上游 vendored 源码构建成 deb，
-# 经 _packages.yml 的 build-niri 作业产出 niri-deb 工件，
-# 再由 rootfs.yml 收进 debs/ → 02-mount-chroot.sh 拷到 /tmp/debs。
-# 所以这里**不写 niri**：它由 20-desktop.sh 的 Niri 分支装本地 deb 并断言。
+# niri / noctalia / mpvpaper 都不在 Ubuntu 归档里，由独立仓库
+# code002-2/ubuntu-niri-repo 构建并发布成 apt 源（NIRI_REPO，见 rootfs.yml）。
+# 其中 **niri 是硬性要求**，由 20-desktop.sh 的 Niri 分支直接 apt_install 并断言，
+# 所以不写在这个列表里；noctalia / mpvpaper 走 best_effort。
 #
-# 其余是让 niri 在平板上真正能用起来的部分。niri 自己不提供状态栏、
+# 其余是让 niri 在平板上真正能用起来的部分：niri 自己不提供状态栏、
 # 启动器、通知、壁纸、屏幕键盘，这些都得单独装。
+noctalia
+mpvpaper
 xwayland-satellite
 fuzzel
 waybar
