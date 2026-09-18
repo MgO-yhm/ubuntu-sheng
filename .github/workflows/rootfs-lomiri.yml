@@ -107,6 +107,8 @@ jobs:
           [ -d firmware-xiaomi-sheng ] && { sudo mkdir -p "$R/usr/lib/firmware";   sudo cp -a firmware-xiaomi-sheng/. "$R/usr/lib/firmware/"; sudo find "$R/usr/lib/firmware" -name '*.sig' -delete; } || true
           [ -d sheng-sensors-files ]   && sudo cp -a sheng-sensors-files/. "$R/" || true
           [ -d sheng-devauth ]         && sudo cp -a sheng-devauth/. "$R/" || true
+          # 这些包里都带 DEBIAN/，照抄会把骨架目录铺到根上
+          sudo rm -rf "$R/DEBIAN" "$R/usr/lib/firmware/DEBIAN"
 
       - name: Write in-chroot script
         run: |
@@ -144,24 +146,33 @@ jobs:
           apt-cache policy lomiri || true
 
           echo "=== 安装 Lomiri ==="
-          # 主包是关键路径：装不上这次构建就没有意义，直接失败并打印诊断。
-          if ! apt-get install -y --no-install-recommends lomiri; then
+          # lomiri 只是 shell 本体；lomiri-desktop-session 才提供会话入口：
+          #   /usr/bin/lomiri-session、/usr/lib/systemd/user/lomiri.service、
+          #   /usr/share/wayland-sessions/lomiri.desktop
+          # 少了它 systemd 会一直抱怨 lomiri.service 不存在，greetd 也无从拉起。
+          LOMPKG="lomiri lomiri-desktop-session"
+          if ! apt-get install -y --no-install-recommends $LOMPKG; then
             echo "=== 第一次失败：修完 dpkg 状态再试一次 ==="
             dpkg --configure -a || true
             apt-get install -f -y --no-install-recommends || true
-            apt-get install -y --no-install-recommends lomiri || {
-              echo "=== lomiri 安装失败，诊断 ==="
-              apt-cache policy lomiri || true
+            apt-get install -y --no-install-recommends $LOMPKG || {
+              echo "=== 安装失败，诊断 ==="
+              apt-cache policy lomiri lomiri-desktop-session || true
               dpkg -l | grep -Ev '^ii' | head -30 || true
               exit 1
             }
           fi
-          dpkg -s lomiri | grep -q 'Status: install ok installed' \
-            || { echo "lomiri 未处于已配置状态"; exit 1; }
+          for p in lomiri lomiri-desktop-session; do
+            dpkg -s "$p" | grep -q 'Status: install ok installed' \
+              || { echo "$p 未处于已配置状态"; exit 1; }
+          done
+          ls -l /usr/bin/lomiri-session /usr/share/wayland-sessions/lomiri.desktop
 
           # 其余都是尽力而为，缺哪个都不该让整次构建挂掉
           apt-get install -y --no-install-recommends \
-            lomiri-system-settings greetd network-manager \
+            lomiri-system-settings lomiri-desktop lomiri-greeter \
+            debian-lomiri-default-settings \
+            greetd network-manager \
             pipewire pipewire-pulse wireplumber openssh-server \
             locales tzdata kmod fonts-noto-cjk \
             || echo "部分辅助包安装失败（不致命，继续）"
@@ -193,25 +204,45 @@ jobs:
           printf 'LANG=en_US.UTF-8\n' > /etc/default/locale
 
           echo "=== greetd 启动 Lomiri 会话 ==="
-          echo "--- lomiri 提供的入口 ---"
-          dpkg -L lomiri | grep -E 'bin/|wayland-sessions|xsessions' || true
-          SESSION=lomiri
-          if [ -x /usr/bin/lomiri-session ]; then SESSION=lomiri-session; fi
-          echo "会话命令: $SESSION"
+          # 用 lomiri-session 而不是 lomiri：前者负责拉起 systemd user session
+          # 和 lomiri.service，后者只是 shell 本体。
+          SESSION=/usr/bin/lomiri-session
+          [ -x "$SESSION" ] || { echo "缺少 $SESSION"; exit 1; }
           mkdir -p /etc/greetd
           printf '%s\n' \
             '[terminal]' \
             'vt = 1' \
             '' \
             '[default_session]' \
-            "command = \"$SESSION\"" \
+            'command = "/usr/bin/lomiri-session"' \
             'user = "ubuntu"' \
             > /etc/greetd/config.toml
           cat /etc/greetd/config.toml
 
+          # getty 会占住 tty1，和 greetd 的 vt = 1 打架（上一次真机就卡在这：
+          # 屏幕上是 tty1 的登录提示，Lomiri 起不来）
+          systemctl mask getty@tty1.service || true
+          systemctl set-default graphical.target || true
+
           systemctl enable greetd.service   || true
           systemctl enable ssh.service      || true
           systemctl enable NetworkManager.service || true
+
+          # 持久化 journal + 一次性诊断单元。出问题时不用连键盘，
+          # 直接回 TWRP 读 /diag.txt 就行。
+          mkdir -p /var/log/journal
+          cat > /etc/systemd/system/diag.service <<'EOU'
+          [Unit]
+          Description=boot diagnostics
+          After=graphical.target greetd.service
+          [Service]
+          Type=oneshot
+          ExecStart=/bin/sh -c 'sleep 25; { echo "== date =="; date; echo "== failed units =="; systemctl --no-pager --failed; echo "== greetd =="; systemctl --no-pager status greetd.service; echo "== drm =="; ls -l /dev/dri; echo "== sessions =="; loginctl list-sessions; echo "== journal =="; journalctl -b -n 250 --no-pager; } > /diag.txt 2>&1'
+          [Install]
+          WantedBy=multi-user.target
+          EOU
+          sed -i 's/^          //' /etc/systemd/system/diag.service
+          systemctl enable diag.service || true
 
           echo "=== 触摸需要的 uinput ==="
           mkdir -p /etc/modules-load.d
@@ -255,7 +286,7 @@ jobs:
           set -euxo pipefail
           R="$PWD/rootfs"
           echo "=== init ==="
-          sudo chroot "$R" /bin/bash -c 'cd / && readlink -f /sbin/init; ls -d /usr/share/lomiri* 2>/dev/null | head; ls -l /etc/greetd/config.toml; ls /lib/modules' || true
+          sudo chroot "$R" /bin/bash -c 'cd / && readlink -f /sbin/init; ls -l /usr/bin/lomiri-session /usr/share/wayland-sessions/lomiri.desktop /etc/systemd/system/diag.service /etc/systemd/system/display-manager.service; echo "--- getty@tty1 ---"; readlink -f "/etc/systemd/system/getty@tty1.service"; echo "--- greetd ---"; cat /etc/greetd/config.toml; echo "--- modules ---"; ls /lib/modules' || true
           echo "=== size ==="
           # proc 已挂上，表项随时消失会让 du 返回 1，别让 set -e 抓走
           sudo du -sh --exclude=proc --exclude=sys --exclude=dev "$R" 2>/dev/null || true
