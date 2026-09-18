@@ -158,6 +158,37 @@ jobs:
           retention-days: 3
           if-no-files-found: error
 
+  build-niri:
+    name: Build niri
+    runs-on: ubuntu-24.04-arm
+    # Rust 全量构建，给足时间（首次没有 cargo 缓存）
+    timeout-minutes: 120
+    # niri 是"额外加一个桌面选项"用的，构建失败不应该让 packages 整体失败，
+    # 否则 KDE/GNOME/Lomiri 的镜像也一起产不出来。缺 deb 时由 20-desktop.sh
+    # 的 Niri 分支明确报错（只有选 Niri 的人才会看到）。
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Build Tools
+        run: |
+          sudo apt-get update -qq
+          # niri 是 Rust 项目，但链接一整套 Wayland/DRM/输入库；
+          # bindgen 需要 clang/libclang。
+          sudo apt-get install -y -qq build-essential pkg-config cmake clang libclang-dev \
+            libudev-dev libseat-dev libinput-dev libgbm-dev libegl-dev libwayland-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev libpango1.0-dev libdisplay-info-dev \
+            libdbus-1-dev libsystemd-dev libpipewire-0.3-dev xz-utils
+      - name: Build
+        run: |
+          chmod +x scripts/packages/build-niri.sh
+          ./scripts/packages/build-niri.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: niri-deb
+          path: niri_*_arm64.deb
+          retention-days: 3
+          if-no-files-found: error
+
   build-iio-sensor-proxy:
     name: Build iio-sensor-proxy (SSC)
     runs-on: ubuntu-24.04-arm

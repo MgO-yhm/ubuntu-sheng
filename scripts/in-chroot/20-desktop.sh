@@ -59,11 +59,32 @@ case "$DESKTOP" in
     [[ -x /usr/bin/lomiri-session ]] || die "缺少 /usr/bin/lomiri-session（镜像不可用）"
     apt_install_list_best_effort "$BUILD_DIR/lists/lomiri.list"
     ;;
+  Niri)
+    log "安装 Niri（滚动平铺 Wayland 合成器）"
+    apt_update
+    # niri 不在 Ubuntu 归档里（pool 下没有 n/niri，Launchpad 上也没有源包），
+    # 用的是 build-niri 作业从上游 vendored 源码构建的本地 deb ——
+    # 它已经在 /tmp/debs 里（由 scripts/host/02-mount-chroot.sh 拷入）。
+    shopt -s nullglob
+    niri_debs=(/tmp/debs/niri_*.deb)
+    [[ "${#niri_debs[@]}" -gt 0 ]] || die "找不到 niri 的 deb（/tmp/debs/niri_*.deb）：build-niri 作业失败或被跳过"
+    # 用 apt 装本地 deb：libwayland/libseat/libdisplay-info 这些运行时依赖
+    # 由 apt 从归档里补齐，比自己写 Depends 稳
+    if ! apt_install "${niri_debs[@]}"; then
+      warn "niri 首次安装失败，修依赖后重试"
+      apt-get install -f -y || true
+      apt_install "${niri_debs[@]}" || die "niri 安装失败，请看上面的依赖错误"
+    fi
+    command -v niri >/dev/null 2>&1 || die "niri 装上了但 PATH 里找不到可执行文件"
+    [[ -f /usr/share/wayland-sessions/niri.desktop ]] || die "缺少 niri 的 wayland-sessions 描述文件"
+    command -v niri-session >/dev/null 2>&1 || die "缺少 niri-session（greetd 靠它起会话）"
+    apt_install_list_best_effort "$BUILD_DIR/lists/niri.list"
+    ;;
   server)
     log "desktop=server：不安装桌面环境"
     ;;
   *)
-    die "未知的 DESKTOP: $DESKTOP（可选 GNOME / KDE Plasma / Lomiri / server）"
+    die "未知的 DESKTOP: $DESKTOP（可选 GNOME / KDE Plasma / Lomiri / Niri / server）"
     ;;
 esac
 

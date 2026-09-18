@@ -22,7 +22,7 @@ on:
           - '26.10 (stonking)'
           - '25.10 (questing)'
       desktop:
-        description: '桌面环境（server 为无图形界面；Lomiri = 原 Ubuntu Touch 的 Unity8，为触屏平板设计）'
+        description: '桌面环境（server 为无图形界面；Lomiri = 原 Ubuntu Touch 的 Unity8，为触屏平板设计；Niri = 滚动平铺合成器）'
         required: true
         type: choice
         default: 'KDE Plasma'
@@ -30,6 +30,7 @@ on:
           - 'KDE Plasma'
           - 'GNOME'
           - 'Lomiri'
+          - 'Niri'
           - 'server'
       plasma_mobile:
         description: '使用 plasma-mobile 替代 plasma-desktop（仅 KDE Plasma 生效）'
@@ -331,6 +332,12 @@ jobs:
       - name: Collect firmware-xiaomi-sheng
         uses: actions/download-artifact@v8
         with: { name: firmware-xiaomi-sheng-deb, path: debs }
+      - name: Collect niri
+        # build-niri 是 continue-on-error 的（它失败不该拖垮其它桌面），
+        # 所以这里也要容错：没下到就交给 20-desktop.sh 的 Niri 分支报错。
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with: { name: niri-deb, path: debs }
       - name: Collect xiaomi-* packages
         uses: actions/download-artifact@v8
         with: { name: xiaomi-debs, path: debs }

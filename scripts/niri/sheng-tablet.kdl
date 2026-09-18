@@ -1,0 +1,63 @@
+// sheng（小米平板 6S Pro 12.4）的 niri 默认配置
+//
+// 构建期由 40-system-config.sh 装到用户配置目录（~/.config/niri/config.kdl），
+// 用户可以直接改，改坏了删掉就回到 niri 内置默认。
+//
+// 这里只放**高置信度**的配置项：
+//   * 刻意不写 binds —— niri 自带一套完整的默认键位，自己写容易漏；
+//     需要改键位时再逐个覆盖。
+//   * 每一处语法都由 90-verify.sh 用 `niri validate` 校验，配置语法错会让
+//     niri 拒绝启动，不能靠肉眼看。
+//
+// 想深度定制（状态栏、启动器、主题联动）可以参考 NyxNiri 的
+// configs/niri 与 configs/noctalia：https://github.com/ech678/NyxNiri
+// 注意那是 Arch/CachyOS 向的，装包方式（paru/AUR）在 Ubuntu 上不适用，
+// 但 KDL 配置思路可以直接借鉴。
+
+input {
+    // 平板本体没有触摸板；保留这块是为了接键盘底座/蓝牙鼠标时可用
+    touchpad {
+        tap
+        natural-scroll
+        accel-profile "adaptive"
+    }
+
+    // 触摸屏不需要配置：niri 内置触摸手势（在列上拖动即滚动）。
+    // 若需要禁用触摸，加：touch { } 里对应项即可。
+}
+
+layout {
+    // 平板上手指粗，间距和边框都比桌面默认值大一点
+    gaps 16
+    border {
+        width 4
+    }
+    focus-ring {
+        width 4
+    }
+    // 触摸屏更容易误触，列宽预设给几档常用的
+    preset-column-widths {
+        proportion 0.33333
+        proportion 0.5
+        proportion 0.66667
+    }
+    default-column-width {
+        proportion 0.5
+    }
+}
+
+// 客户端不做服务端装饰：平板上标题栏占地方
+prefer-no-csd
+
+screenshot-path "~/Pictures/Screenshots"
+
+// 通知守护进程（lists/niri.list 里装了 mako-notifier）
+spawn-at-startup "mako"
+
+// 屏幕键盘：niri 支持虚拟键盘，但**必须有一个输入法客户端在跑**。
+// 装了的候选：
+//   maliit-keyboard  —— 走 zwp_input_method_v2（跟 Lomiri 用的是同一套）
+//   squeekboard      —— 走 text-input-v3
+// 两个都装进了镜像，但默认都不启：先让 niri 干净地起来，再按需打开下面这行，
+// 否则键盘起不来时会连带拖慢/干扰合成器启动。
+// spawn-at-startup "maliit-keyboard"
