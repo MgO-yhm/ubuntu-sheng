@@ -171,6 +171,7 @@ jobs:
             dpkg -i /root/*.deb || apt-get -f install -y --no-install-recommends || true
             echo "--- /lib/modules ---"
             ls /lib/modules || true
+            rm -f /root/*.deb   # 259M，装完就删，别打进 tarball
           else
             echo "没有内核 deb：模块缺失（显示能起，触摸/音频/电量大半不行）"
           fi
@@ -256,7 +257,8 @@ jobs:
           echo "=== init ==="
           sudo chroot "$R" /bin/bash -c 'cd / && readlink -f /sbin/init; ls -d /usr/share/lomiri* 2>/dev/null | head; ls -l /etc/greetd/config.toml; ls /lib/modules' || true
           echo "=== size ==="
-          sudo du -sh "$R"
+          # proc 已挂上，表项随时消失会让 du 返回 1，别让 set -e 抓走
+          sudo du -sh --exclude=proc --exclude=sys --exclude=dev "$R" 2>/dev/null || true
 
       - name: Unmount
         if: always()
