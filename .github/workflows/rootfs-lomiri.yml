@@ -44,7 +44,7 @@ jobs:
             --arch=arm64 \
             --variant=minbase \
             --components=main,universe \
-            --include=ca-certificates,gnupg,apt-utils,systemd,systemd-sysv,sudo,locales,tzdata,kmod,udev \
+            --include=ca-certificates,gnupg,systemd,systemd-sysv,sudo,locales,tzdata,kmod,udev \
             "${{ inputs.ubuntu_series }}" \
             "$PWD/rootfs" \
             http://ports.ubuntu.com/ubuntu-ports
