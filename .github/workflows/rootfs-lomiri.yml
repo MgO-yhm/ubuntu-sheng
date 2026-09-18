@@ -12,9 +12,9 @@ on:
   workflow_dispatch:
     inputs:
       ubuntu_series:
-        description: 'Ubuntu 系列（26.10 目前是 devel；26.04 是 resolute）'
+        description: 'Ubuntu 系列（26.10 = stonking；26.04 = resolute）'
         type: string
-        default: 'devel'
+        default: 'stonking'
       extra_packages:
         description: '额外安装的包（空格分隔）'
         type: string
@@ -40,11 +40,22 @@ jobs:
         run: |
           set -euxo pipefail
           # universe 是必须的：lomiri 在 universe 里
+          # debootstrap 按 /usr/share/debootstrap/scripts/<suite> 查脚本，runner
+          # 上的 debootstrap 比 stonking 早，没有对应脚本 → 用通用脚本兜底
+          S="${{ inputs.ubuntu_series }}"
+          echo "--- debootstrap scripts 目录 ---"
+          ls /usr/share/debootstrap/scripts | tr '\n' ' '; echo
+          if [ ! -e "/usr/share/debootstrap/scripts/$S" ]; then
+            F=gutsy
+            [ -e "/usr/share/debootstrap/scripts/$F" ] || F=$(ls /usr/share/debootstrap/scripts | sort | tail -1)
+            echo "suite '$S' 无脚本 → 用 '$F' 兜底"
+            sudo ln -sf "$F" "/usr/share/debootstrap/scripts/$S"
+          fi
           sudo debootstrap \
             --arch=arm64 \
             --components=main,universe \
             --include=ca-certificates,gnupg,systemd,systemd-sysv,sudo,locales,tzdata,kmod,udev \
-            "${{ inputs.ubuntu_series }}" \
+            "$S" \
             "$PWD/rootfs" \
             http://ports.ubuntu.com/ubuntu-ports
           echo "=== base built ==="
