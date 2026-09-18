@@ -73,6 +73,13 @@ jobs:
             http://ports.ubuntu.com/ubuntu-ports
           echo "=== base built ==="
           sudo du -sh "$PWD/rootfs"
+          echo "--- rootfs 属主 ---"
+          ls -ld "$PWD/rootfs"
+          # chroot 的 / 必须是 root 所有。否则 systemd 的工具会报
+          # "Detected unsafe path transition / (owned by 1001) → /run ..."，
+          # 凡是 postinst 里调 systemctl 的包统统 exit 73。
+          sudo chown root:root "$PWD/rootfs"
+          sudo chmod 755 "$PWD/rootfs"
 
       - name: Mount chroot
         run: |
