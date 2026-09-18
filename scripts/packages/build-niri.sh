@@ -35,9 +35,11 @@ fi
 echo "[build-niri] 解包"
 tar -xf "$WORK/$TARBALL_NAME" -C "$WORK"
 
-# 布局无关：tarball 的顶层目录名可能带版本号/v 前缀，自己找含 Cargo.toml 的那层
-SRC="$(find "$WORK" -maxdepth 3 -name Cargo.toml -printf '%h\n' | head -n1)"
-[[ -n "$SRC" ]] || { echo "[build-niri] 错误：解包后找不到 Cargo.toml" >&2; ls -R "$WORK" | head -40 >&2; exit 1; }
+# 布局无关：tarball 的顶层目录名可能带版本号/v 前缀，自己找含 Cargo.toml 的那层。
+# 用 find -quit 而不是 | head -n1：head 提前关管道会让 find 吃到 SIGPIPE 返回非 0，
+# 在 set -o pipefail 下会把整个赋值判为失败，set -e 随即静默终止脚本（无任何报错）。
+SRC="$(find "$WORK" -maxdepth 3 -name Cargo.toml -printf '%h\n' -quit)"
+[[ -n "$SRC" ]] || { echo "[build-niri] 错误：解包后找不到 Cargo.toml" >&2; ls -R "$WORK" 2>&1 | sed -n '1,40p' >&2; exit 1; }
 echo "[build-niri] 源码目录: $SRC"
 
 # Rust 工具链：runner 自带 rustup，但版本可能低于 niri 的 MSRV
@@ -104,4 +106,5 @@ chmod 755 "$BUILD/usr/bin/niri" "$BUILD/usr/bin/niri-session"
 
 dpkg-deb --build --root-owner-group "$BUILD" "$OUT"
 echo "[build-niri] 产出 $OUT ($(du -h "$OUT" | cut -f1))"
-dpkg-deb -c "$OUT" | awk '{print "    "$NF}' | grep -v '/$' | head -20
+# 末尾这段纯展示：同样避免 head 在 pipefail 下把脚本判死
+dpkg-deb -c "$OUT" 2>/dev/null | awk '{print "    "$NF}' | grep -v '/$' | sed -n '1,20p' || true
