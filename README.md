@@ -29,27 +29,6 @@
 | **shrink_image** | `true` | 构建后 `e2fsck -fy` + `resize2fs -M` 收缩镜像 |
 | **upload_artifacts** | `true` | 设为 `false` 只验证流程、不产出 Artifact |
 
-## 桌面环境：Lomiri
-
-`Lomiri` 是原 Ubuntu Touch 的 Unity8 外壳，为触屏平板设计。选它时：
-
-* **显示栈是 Mir + Qt/QML 直接走 DRM/KMS**，不需要 libhybris / Android vendor 层 ——
-  这是它区别于 Sailfish / Droidian 的地方，纯 mainline 内核就能跑。
-* 会话由 **greetd** 拉起（`display-manager.service` → `greetd.service`）。`greetd`
-  的 `[default_session]` 命令就是会话本体，所以等价于自动登录。
-  镜像里**不放 greeter**：`lomiri-greeter` 那个包是 LightDM 用的，对 greetd 无效。
-* 会话入口是 `lomiri-desktop-session` 提供的 `/usr/bin/lomiri-session`。只有 `lomiri`
-  包是不够的 —— 缺了它 systemd 会一直抱怨 `lomiri.service` 不存在，greetd 也无从拉起会话。
-* `40-system-config.sh` 会 **mask `getty@tty1.service`**：getty 默认占住 tty1，和 greetd 的
-  `vt = 1` 抢同一个终端，不 mask 的话真机上只会看到 tty1 的登录提示。
-* `40-system-config.sh` 同时写入 `/etc/deviceinfo/devices/sheng.yaml` 与
-  `/etc/machine-info`。原因：`lomiri-session` 的 `GRID_UNIT_PX` 取自
-  `device-info get GridUnit`，而 `/etc/deviceinfo/default.yaml` 的兜底档位是 `desktop`
-  （GridUnit 8，参考表里“96–150 PPI 普通笔记本”那一行）。sheng 是 12.4″ 3048×2032 =
-  **295 PPI** 平板，按 [UBports 的参考表](https://docs.ubports.com/en/latest/porting/configure_test_fix/Display.html)
-  （299 PPI 的 Nexus 10 用 20）应为 **21**；不配置的话整套 UI 只有应有尺寸的 1/2.6，
-  触控命中区域会小到没法用。`/etc/default/lomiri-desktop-session` 里的
-  `DEFAULT_GRID_UNIT_PX=21` 是保底覆盖，它的优先级高于 device-info 的自动探测。
 
 ## 许可与第三方组件
 
