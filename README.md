@@ -4,8 +4,7 @@
 [![Build RootFS](https://github.com/code002-2/ubuntu-sheng/actions/workflows/rootfs.yml/badge.svg?branch=main)](https://github.com/code002-2/ubuntu-sheng/actions/workflows/rootfs.yml)
 
 用 **GitHub Actions** 为**小米平板 6S Pro（sheng / 高通 SM8550）**构建 **Ubuntu arm64** 的 `rootfs.img` 与 `boot.img`，
-产物可直接用 `fastboot` 刷入设备。构建逻辑移植自 [ianchb/debian-sheng](https://github.com/ianchb/debian-sheng)，
-系统完全禁用 snap。姊妹项目：[archlinux-sheng](https://github.com/code002-2/archlinux-sheng)（Arch Linux ARM）。
+产物可直接用 `fastboot` 刷入设备。
 
 ## 参数说明
 
