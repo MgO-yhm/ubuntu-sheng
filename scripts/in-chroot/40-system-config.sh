@@ -128,7 +128,8 @@ EOF
     systemctl enable gdm3.service || warn "启用 gdm3 失败"
     [[ -e /etc/systemd/system/display-manager.service ]] || die "GDM display-manager.service 链接未生成"
     dm_target="$(readlink -f /etc/systemd/system/display-manager.service 2>/dev/null || true)"
-    [[ "$dm_target" == "/lib/systemd/system/gdm3.service" || "$dm_target" == "/usr/lib/systemd/system/gdm3.service" ]] \
+    [[ "$dm_target" == "/lib/systemd/system/gdm3.service" || "$dm_target" == "/usr/lib/systemd/system/gdm3.service" \
+       || "$dm_target" == "/lib/systemd/system/gdm.service" || "$dm_target" == "/usr/lib/systemd/system/gdm.service" ]] \
       || die "display-manager.service 未指向 gdm3.service: $dm_target"
     systemctl set-default graphical.target
     ;;

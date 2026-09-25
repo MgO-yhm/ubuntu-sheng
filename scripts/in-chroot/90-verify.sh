@@ -188,7 +188,8 @@ if [[ "${DESKTOP:-server}" == "GNOME" ]]; then
     pass "GDM 未禁用 Wayland"
   fi
   dm_target="$(readlink -f /etc/systemd/system/display-manager.service 2>/dev/null || true)"
-  [[ "$dm_target" == "/lib/systemd/system/gdm3.service" || "$dm_target" == "/usr/lib/systemd/system/gdm3.service" ]] \
+  [[ "$dm_target" == "/lib/systemd/system/gdm3.service" || "$dm_target" == "/usr/lib/systemd/system/gdm3.service" \
+     || "$dm_target" == "/lib/systemd/system/gdm.service" || "$dm_target" == "/usr/lib/systemd/system/gdm.service" ]] \
     && pass "display-manager.service 指向 GDM" \
     || fail "display-manager.service 未指向 GDM: $dm_target"
 fi
