@@ -99,24 +99,37 @@ systemctl enable NetworkManager.service || warn "启用 NetworkManager 失败"
 # ---------------------------------------------------------------------------
 case "$DESKTOP" in
   GNOME)
+    # Ubuntu 的 GDM 默认优先 Wayland；这里显式打开，避免基础镜像或旧配置
+    # 带入 WaylandEnable=false 后退回 Xorg。KDE 的 SDDM/X11 兼容配置不应复用到 GNOME。
+    log "配置 GDM（Wayland）"
+    install -d /etc/gdm3
     if [[ "$AUTOLOGIN" == "true" ]]; then
       log "配置 GDM 自动登录: $USERNAME"
-      # 路径很重要：Ubuntu 的 gdm3 只读 **/etc/gdm3/custom.conf**；上游 Debian 用的
-      # /etc/gdm3/daemon.conf 在 Ubuntu 上是惰性文件（直接照搬会静默失效，登录界面照旧）。
-      install -d /etc/gdm3
-      if [[ -f /etc/gdm3/custom.conf ]]; then
-        sed -i -E 's/^#[[:space:]]*AutomaticLoginEnable[[:space:]]*=.*/AutomaticLoginEnable=true/' /etc/gdm3/custom.conf
-        sed -i -E "s/^#[[:space:]]*AutomaticLogin[[:space:]]*=.*/AutomaticLogin=${USERNAME}/" /etc/gdm3/custom.conf
+      cat > /etc/gdm3/custom.conf <<EOF
+[daemon]
+WaylandEnable=true
+AutomaticLoginEnable=true
+AutomaticLogin=$USERNAME
+EOF
+    else
+      if [[ ! -f /etc/gdm3/custom.conf ]]; then
+        printf '[daemon]\n' > /etc/gdm3/custom.conf
       fi
-      # 上面两条 sed 只有在文件里存在被注释掉的同名键时才生效；否则重写为最小 [daemon] 段
-      if ! { grep -qE '^AutomaticLoginEnable' /etc/gdm3/custom.conf && grep -qE '^AutomaticLogin=' /etc/gdm3/custom.conf; }; then
-        warn "custom.conf 结构不符合预期（缺少已注释的 AutomaticLogin* 键），重写为最小 [daemon] 段"
-        printf '[daemon]\nAutomaticLoginEnable=true\nAutomaticLogin=%s\n' "$USERNAME" > /etc/gdm3/custom.conf
+      if grep -qE '^[#[:space:]]*WaylandEnable[[:space:]]*=' /etc/gdm3/custom.conf; then
+        sed -i -E 's/^[#[:space:]]*WaylandEnable[[:space:]]*=.*/WaylandEnable=true/' /etc/gdm3/custom.conf
+      else
+        printf '\nWaylandEnable=true\n' >> /etc/gdm3/custom.conf
       fi
-      # Debian 系兼容：Ubuntu 不读该文件，写出无害
-      printf '[daemon]\nAutomaticLoginEnable=true\nAutomaticLogin=%s\n' "$USERNAME" > /etc/gdm3/daemon.conf
+    fi
+    # 仅作兼容记录；Ubuntu GDM 实际读取 custom.conf。
+    if [[ "$AUTOLOGIN" == "true" ]]; then
+      cp -f /etc/gdm3/custom.conf /etc/gdm3/daemon.conf
     fi
     systemctl enable gdm3.service || warn "启用 gdm3 失败"
+    [[ -e /etc/systemd/system/display-manager.service ]] || die "GDM display-manager.service 链接未生成"
+    dm_target="$(readlink -f /etc/systemd/system/display-manager.service 2>/dev/null || true)"
+    [[ "$dm_target" == "/lib/systemd/system/gdm3.service" || "$dm_target" == "/usr/lib/systemd/system/gdm3.service" ]] \
+      || die "display-manager.service 未指向 gdm3.service: $dm_target"
     systemctl set-default graphical.target
     ;;
   "KDE Plasma")

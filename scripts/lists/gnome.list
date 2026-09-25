@@ -3,11 +3,19 @@
 # snap 版 firefox，会在镜像里引入 snap 运行时。
 gnome-shell
 gnome-session
+ubuntu-session
+gnome-settings-daemon
 gnome-terminal
 gnome-control-center
 gnome-keyring
 nautilus
 gnome-tweaks
+gsettings-desktop-schemas
+network-manager-gnome
+xwayland
+gnome-shell-extension-ubuntu-dock
+gnome-shell-extension-appindicator
+gnome-shell-extension-desktop-icons-ng
 xdg-desktop-portal-gnome
 gdm3
 pipewire-alsa

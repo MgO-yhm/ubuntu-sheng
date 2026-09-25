@@ -177,6 +177,22 @@ if [[ "${DESKTOP:-server}" != "server" ]]; then
   fi
 fi
 
+if [[ "${DESKTOP:-server}" == "GNOME" ]]; then
+  [[ -x /usr/sbin/gdm3 ]] && pass "GDM 可执行文件存在" || fail "缺少 /usr/sbin/gdm3"
+  [[ -e /usr/share/wayland-sessions/ubuntu.desktop ]] \
+    && pass "Ubuntu Wayland 会话存在" \
+    || fail "缺少 /usr/share/wayland-sessions/ubuntu.desktop"
+  if grep -qE '^[[:space:]]*WaylandEnable[[:space:]]*=[[:space:]]*false' /etc/gdm3/custom.conf 2>/dev/null; then
+    fail "GDM 被配置为禁用 Wayland"
+  else
+    pass "GDM 未禁用 Wayland"
+  fi
+  dm_target="$(readlink -f /etc/systemd/system/display-manager.service 2>/dev/null || true)"
+  [[ "$dm_target" == "/lib/systemd/system/gdm3.service" || "$dm_target" == "/usr/lib/systemd/system/gdm3.service" ]] \
+    && pass "display-manager.service 指向 GDM" \
+    || fail "display-manager.service 未指向 GDM: $dm_target"
+fi
+
 if [[ -e /etc/systemd/system/multi-user.target.wants/NetworkManager.service ]] \
    || systemctl is-enabled NetworkManager.service >/dev/null 2>&1; then
   pass "NetworkManager 已启用"

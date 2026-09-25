@@ -28,7 +28,17 @@ case "$DESKTOP" in
   GNOME)
     log "安装 GNOME（snap-free 包列表）"
     apt_update
-    apt_install_list_best_effort "$BUILD_DIR/lists/gnome.list"
+    # GNOME 的会话链路是启动所必需的，不能用 best-effort：否则某个包名
+    # 改名/依赖失败时，镜像仍会生成，但 GDM 只有空壳，真机表现为黑屏。
+    apt_install_list "$BUILD_DIR/lists/gnome.list"
+    for p in gdm3 gnome-shell gnome-session ubuntu-session gnome-settings-daemon \
+             xwayland xdg-desktop-portal-gnome; do
+      dpkg-query -W -f='${Status}' "$p" 2>/dev/null | grep -q "install ok installed" \
+        || die "GNOME 关键包未安装成功: $p"
+    done
+    [[ -x /usr/sbin/gdm3 ]] || die "缺少 /usr/sbin/gdm3"
+    [[ -e /usr/share/wayland-sessions/ubuntu.desktop ]] \
+      || die "缺少 Ubuntu Wayland 会话: /usr/share/wayland-sessions/ubuntu.desktop"
     ;;
   "KDE Plasma")
     if [[ "$PLASMA_MOBILE" == "true" ]]; then
